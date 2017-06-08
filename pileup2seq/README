@@ -1,0 +1,44 @@
+pileup2seq.py
+===============
+This folder contains a "pileup2seq.py" script. It can be used to convert
+samtools pileup output to LASER required input format (.seq file).
+
+Data
+----
+Under the "exampleBAM" folder, you can find "NA12878.chrom22.recal.bam", which
+is a BAM file of the HapMap sample NA12878.
+This sample was target sequenced but there is no target region on chromosome 22.
+
+Example
+-------
+See the "cmd.sh" file for command line examples.
+
+Note
+----
+This python script is a joint work by Xiaowei Zhan and Chaolong Wang.
+If you have any questions, please email Xiaowei at zhanxw@umich.edu or Chaolong at chaolong@umich.edu.
+
+Details
+-------
+This script will report the average depth and the percentage of sites that have 
+pileup reads. For example,
+
+    NA12878.chrom22.pileup, avgDepth=0.5486, ptgSiteHasPileup=16.6632%
+
+These statistics are calculated as:
+
+    totalSite = siteHasPileup + siteHasNopileup + excludeSites = lines in .site file
+    avgDepth = totalDepth / totalSite
+    ptgSiteCover = 100.0 * siteHasPileup / (siteHasPileup + siteHasNopileup)
+
+ChangeLog
+---------
+2016-02-24  Xiaowei Zhan  <zhanxw@gmail.com>
+        * Add -f option to check reference alleles
+
+2014-05-04  Xiaowei Zhan  <zhanxw@gmail.com>
+	* Fix a case - when ref, alt depths are 0, qual is 0 (not others)
+
+2014-05-01  Xiaowei Zhan  <zhanxw@gmail.com>
+	* Add phred-scale mean base qualities in the output .seq file
+
