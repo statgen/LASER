@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
-#include <cblas.h>
+#include <openblas/cblas.h>
 #define  ARMA_DONT_USE_WRAPPER
 #include "armadillo"
 using namespace arma;

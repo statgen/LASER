@@ -1,0 +1,2 @@
+openblas,https://github.com/xianyi/OpenBLAS/archive/v0.3.7.tar.gz
+gsl,ftp://ftp.gnu.org/gnu/gsl/gsl-2.6.tar.gz --cmake gsl.cmake
