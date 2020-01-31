@@ -22,6 +22,8 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <openblas/cblas.h>
+#define  __GSL_CBLAS_H__
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_statistics_double.h>
@@ -31,7 +33,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <omp.h>
-#include <openblas/cblas.h>
 #define  ARMA_DONT_USE_WRAPPER
 #include "armadillo"
 using namespace arma;

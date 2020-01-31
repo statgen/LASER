@@ -21,6 +21,8 @@
 #include <fstream>
 #include <string>
 #include <map>
+#include <openblas/cblas.h>
+#define  __GSL_CBLAS_H__
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_statistics_double.h>

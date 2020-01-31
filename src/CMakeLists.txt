@@ -2,7 +2,6 @@ execute_process(COMMAND bash -c "gfortran -print-search-dirs | sed -n -e 's/libr
 string(STRIP "${GFORTRAN_PATHS}" GFORTRAN_PATHS)
 foreach(PATH ${GFORTRAN_PATHS})
    find_library(GFORTRAN_LIB gfortran PATHS ${PATH})
-   message(STATUS "${PATH} -- ${GFORTRAN_LIB}")
    if(GFORTRAN_LIB)
       break()
    endif()
