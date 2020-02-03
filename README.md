@@ -5,6 +5,31 @@ This package includes four programs for ancestry estimation and for preparing in
 We also include example R codes (in the "plot" folder) to generate figures for results based on the HGDP reference panel. 
 Color scheme and symbols for 53 HGDP populations are provided, which are consistent with those presented in Wang et al. (2014, Nature Genetics). 
 
+## Installation
+
+Before installing, the following software/packages are required:
+- CMake 3.8+
+- gcc
+- gfortran
+- openmp
+- cget
+
+Follow these steps to complete installation:
+
+- Clone repository.
+```sh
+git clone https://github.com/statgen/LASER
+cd LDServer
+```
+
+- Compile and install.
+```sh
+cget install .
+```
+
+The compiled `laser` and `trace` executables will be located in `cget/bin` directory.
+
+
 
 ## Main programs for ancestry estimation
 
