@@ -16,12 +16,15 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "aux.h"
+#include "TableReader.h"
 #include <iostream>
 #include <iomanip>
 #include <fstream>
 #include <string>
 #include <map>
 #include <vector>
+
 #include <openblas/cblas.h>
 #define  __GSL_CBLAS_H__
 #include <gsl/gsl_rng.h>
@@ -128,7 +131,6 @@ int procrustes(mat &X, mat &Y, mat &Xnew, double &t, double &rho, mat &A, rowvec
 double pprocrustes(mat &X, mat &Y, mat &Xnew, double &t, double &rho, mat &A, rowvec &b, int iter, double eps, int ps);
 int check_format_geno(string filename, int inds, int loci);
 int check_format_coord(string filename, int inds, int npcs);
-bool get_table_dim(int &nrow, int &ncol, string filename, char separator);
 
 ofstream foutLog;
 
@@ -279,14 +281,16 @@ int main(int argc, char* argv[]){
 			}
 			fin.close();		
 		}
-	}	
-	if(STUDY_FILE.compare(default_str) != 0 && flag == 1){
-		if(!get_table_dim(nrow, ncol, STUDY_FILE, '\t')){
-			cerr << "Error: cannot open the file '" << STUDY_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the file '" << STUDY_FILE << "'." << endl;   
-			foutLog.close();
-			return 1;
-		}	
+	}
+
+	if (STUDY_FILE.compare(default_str) != 0 && flag == 1) {
+        TableReader reader;
+
+        reader.set_file_name(STUDY_FILE);
+        reader.open();
+        reader.get_dim(nrow, ncol, '\t');
+        reader.close();
+
 		INDS = nrow - STUDY_NON_DATA_ROWS;
 		int tmpLOCI = ncol - STUDY_NON_DATA_COLS;
 		cout << INDS << " individuals are detected in the STUDY_FILE." << endl;  
@@ -300,42 +304,32 @@ int main(int argc, char* argv[]){
 			cerr << "Error: Invalid number of columns in the STUDY_FILE '" << STUDY_FILE << "'." << endl;
 			foutLog << "Error: Invalid number of columns in the STUDY_FILE '" << STUDY_FILE << "'." << endl;
 			flag = 0;
-		}	
-		STUDY_SITE_FILE = STUDY_FILE;
-		STUDY_SITE_FILE.replace(STUDY_SITE_FILE.length()-5, 5, ".site");
-		fin.open(STUDY_SITE_FILE.c_str());
-		if(fin.fail()){
-			cerr << "Error: cannot open the file '" << STUDY_SITE_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the file '" << STUDY_SITE_FILE << "'." << endl;   
-			foutLog.close();
-			return 1;
-		}else{
-			getline(fin, str);
-			LOCI_S = 0;
-			while(!fin.eof()){
-				getline(fin, str);
-				if(str.length()>0 && str!=" "){
-					j=0;
-					int tabpos[5];
-					for(i=0; i<str.length(); i++){
-						if(str[i]=='\t' && j<5){
-							tabpos[j] = i;
-							j++;
-						}
-					}
-					str[tabpos[0]] = ':';
-					str[tabpos[3]] = ',';
-					string allele = str.substr(tabpos[2]+1,i-tabpos[2]-1);
-					str.resize(tabpos[1]);
-					idxS[str] = LOCI_S;
-					alleleS[str] = allele;
-					LOCI_S++;
-				}
-			}
-			fin.close();
 		}
+
+        LOCI_S = 0;
+
+		STUDY_SITE_FILE = build_sites_filename(STUDY_FILE);
+		vector<string> tokens;
+		reader.set_file_name(STUDY_SITE_FILE);
+		reader.open();
+        reader.read_row(tokens, '\t'); //skip header
+		while (reader.read_row(tokens, '\t') >= 0) {
+		    if (tokens.size() != 5) {
+                cerr << "Error: incorrect number of columns in '" << STUDY_SITE_FILE << "'." << endl;
+                foutLog << "Error: incorrect number of columns in '" << STUDY_SITE_FILE << "'." << endl;
+                foutLog.close();
+                return 1;
+		    }
+		    string variant_name = tokens.at(0) + ":" + tokens.at(1);
+		    string variant_alleles = tokens.at(3) + "," + tokens.at(4);
+            idxS[variant_name] = LOCI_S;
+            alleleS[variant_name] = variant_alleles;
+            LOCI_S++;
+		}
+		reader.close();
+
 		cout << LOCI_S << " loci are detected in the STUDY_FILE." << endl; 
-		foutLog << LOCI_S << " loci are detected in the STUDY_FILE." << endl; 		
+		foutLog << LOCI_S << " loci are detected in the STUDY_FILE." << endl;
 		if(tmpLOCI < 0 || tmpLOCI != LOCI_S){
 			cerr << "Error: Number of loci doesn't match in '" << STUDY_SITE_FILE << "' and '" << STUDY_FILE << "'." << endl;
 			foutLog << "Error: Number of loci doesn't match in '" << STUDY_SITE_FILE << "' and '" << STUDY_FILE << "'." << endl;
@@ -352,12 +346,13 @@ int main(int argc, char* argv[]){
 	}
 	
 	if(GENO_FILE.compare(default_str) != 0 && flag == 1){
-		if(!get_table_dim(nrow, ncol, GENO_FILE, '\t')){
-			cerr << "Error: cannot open the file '" << GENO_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the file '" << GENO_FILE << "'." << endl; 
-			foutLog.close();
-			return 1;
-		}	
+	    TableReader reader;
+
+	    reader.set_file_name(GENO_FILE);
+	    reader.open();
+	    reader.get_dim(nrow, ncol, '\t');
+	    reader.close();
+
 		REF_INDS = nrow - GENO_NON_DATA_ROWS;
 		int tmpLOCI = ncol - GENO_NON_DATA_COLS;
 		cout << REF_INDS << " individuals are detected in the GENO_FILE." << endl; 
@@ -372,61 +367,48 @@ int main(int argc, char* argv[]){
 			foutLog << "Error: Invalid number of columns in the GENO_FILE '" << GENO_FILE << "'." << endl;
 			flag = 0;
 		}
-		
-		GENO_SITE_FILE = GENO_FILE;
-		GENO_SITE_FILE.replace(GENO_SITE_FILE.length()-5, 5, ".site");
-		fin.open(GENO_SITE_FILE.c_str());
-		if(fin.fail()){
-			cerr << "Error: cannot open the file '" << GENO_SITE_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the file '" << GENO_SITE_FILE << "'." << endl;   
-			foutLog.close();
-			return 1;
-		}else{
-			getline(fin, str);
-			LOCI_G = 0;
-			LOCI = 0;
-			while(!fin.eof()){
-				getline(fin, str);
-				if(str.length()>0 && str!=" "){
-					j=0;
-					int tabpos[5];
-					for(i=0; i<str.length(); i++){
-						if(str[i]=='\t' && j<5){
-							tabpos[j] = i;
-							j++;
-						}
-					}
-					str[tabpos[0]] = ':';
-					str[tabpos[3]] = ',';
-					string allele = str.substr(tabpos[2]+1,i-tabpos[2]-1);
-					string snpID = str.substr(tabpos[1]+1,tabpos[2]-tabpos[1]-1);
-					str.resize(tabpos[1]);
-					idxG[str] = LOCI_G;
-					alleleG[str] = allele;
-					LOCI_G++;										
-					if(idxS.count(str)>0){
-						if(alleleS[str].compare(alleleG[str]) != 0){
-							cerr << "Warning: Two datasets have different alleles at locus [" << str << "]: ";
-							cerr << "[" << alleleG[str] << "] vs [" << alleleS[str] << "]." << endl;
-							foutLog << "Warning: Two datasets have different alleles at locus [" << str << "]: ";
-							foutLog << "[" << alleleG[str] << "] vs [" << alleleS[str] << "]." << endl;
-							unmatchSite++;
-						}else if(exSNP.count(snpID)>0){
-							Lex++;
-						}else if(gsl_rng_uniform(rng)<TRIM_PROP){
-							LOCI_trim++;
-						}else{
-							cmnsnp.push_back(str);
-							LOCI++;
-						}
-					}
-				}	
-			}
-			fin.close();
+
+        GENO_SITE_FILE = build_sites_filename(GENO_FILE);
+        vector<string> tokens;
+		reader.set_file_name(GENO_SITE_FILE);
+		reader.open();
+
+		LOCI_G = 0;
+		LOCI = 0;
+
+		reader.read_row(tokens, '\t'); //skip header TODO: check if header = CHR\tPOS\tID\tREF\tALT
+		while (reader.read_row(tokens, '\t') >= 0) {
+		    if (tokens.size() != 5) {
+                cerr << "Error: incorrect number of columns in '" << GENO_SITE_FILE << "'." << endl;
+                foutLog << "Error: incorrect number of columns in '" << GENO_SITE_FILE << "'." << endl;
+                foutLog.close();
+                return 1;
+		    }
+		    string variant_name = tokens.at(0) + ":" + tokens.at(1);
+            string variant_alleles = tokens.at(3) + "," + tokens.at(4);
+            idxG[variant_name] = LOCI_G;
+            alleleG[variant_name] = variant_alleles;
+            ++LOCI_G;
+            if (idxS.count(variant_name) > 0) {
+                if (alleleS[variant_name].compare(variant_alleles) != 0 ) {
+                    cerr << "Warning: Two datasets have different alleles at locus [" << variant_name << "]: " << "[" << variant_alleles<< "] vs [" << alleleS[variant_name] << "]." << endl;
+                    foutLog << "Warning: Two datasets have different alleles at locus [" << variant_name << "]: " << "[" << variant_alleles << "] vs [" << alleleS[variant_name] << "]." << endl;
+                    ++unmatchSite;
+                } else if (exSNP.count(tokens.at(2)) > 0) { // use ID column
+                    ++Lex;
+                } else if (gsl_rng_uniform(rng) < TRIM_PROP) {
+                    ++LOCI_trim;
+                } else {
+                    cmnsnp.push_back(variant_name);
+                    ++LOCI;
+                }
+            }
 		}
+		reader.close();
+
 		cout << LOCI_G << " loci are detected in the GENO_FILE." << endl; 
 		foutLog << LOCI_G << " loci are detected in the GENO_FILE." << endl;
-		
+
 		if(tmpLOCI < 0 || tmpLOCI != LOCI_G){
 			cerr << "Error: Number of loci doesn't match in '" << GENO_SITE_FILE << "' and '" << GENO_FILE << "'." << endl;
 			foutLog << "Error: Number of loci doesn't match in '" << GENO_SITE_FILE << "' and '" << GENO_FILE << "'." << endl;	
@@ -456,33 +438,35 @@ int main(int argc, char* argv[]){
 	}
 
 	if(COORD_FILE.compare(default_str) != 0 && GENO_FILE.compare(default_str) != 0 && flag == 1){
-		if(!get_table_dim(nrow, ncol, COORD_FILE, '\t')){
-			cerr << "Error: cannot open the COORD_FILE '" << COORD_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the COORD_FILE '" << COORD_FILE << "'." << endl; 
-			foutLog.close();
-			return 1;
-		}	
+
+	    TableReader reader;
+
+	    reader.set_file_name(COORD_FILE);
+	    reader.open();
+	    reader.get_dim(nrow, ncol, '\t');
+	    reader.close();
+
 		int tmpINDS = nrow - COORD_NON_DATA_ROWS;
 		NUM_PCS = ncol - COORD_NON_DATA_COLS;
 		cout << tmpINDS << " individuals are detected in the COORD_FILE." << endl;
 		cout << NUM_PCS << " PCs are detected in the COORD_FILE." << endl;
 		foutLog << tmpINDS << " individuals are detected in the COORD_FILE." << endl;
-		foutLog << NUM_PCS << " PCs are detected in the COORD_FILE." << endl;	
-		if(tmpINDS < 0){
+		foutLog << NUM_PCS << " PCs are detected in the COORD_FILE." << endl;
+		if (tmpINDS < 0) {
 			cerr << "Error: Invalid number of rows in the COORD_FILE " << COORD_FILE << "." << endl;
 			foutLog << "Error: Invalid number of rows in the COORD_FILE " << COORD_FILE << "." << endl;
 			flag = 0;
-		}else if(tmpINDS != REF_INDS && REF_INDS >= 0){
+		} else if (tmpINDS != REF_INDS && REF_INDS >= 0) {
 			cerr << "Error: Number of individuals in the COORD_FILE is not the same as in the GENO_FILE." << endl;
 			foutLog << "Error: Number of individuals in the COORD_FILE is not the same as in the GENO_FILE." << endl;
 			flag = 0;
 		}
-		if(NUM_PCS < 0){
-			cerr << "Error: Invalid number of columns in the COORD_FILE " << COORD_FILE << "." << endl;
+		if (NUM_PCS < 0) {
+			cerr << "Error: Invqalid number of columns in the COORD_FILE " << COORD_FILE << "." << endl;
 			foutLog << "Error: Invalid number of columns in the COORD_FILE " << COORD_FILE << "." << endl;
 			flag = 0;
 		}
-		if(flag == 1){
+		if (flag == 1) {
 			flag = check_format_coord(COORD_FILE, REF_INDS, NUM_PCS);
 		}
 	}	
@@ -567,6 +551,7 @@ int main(int argc, char* argv[]){
 			}
 		}
 	}
+
 	
 	// == Variables to be saved for reused ==
 	string *RefInfo1 = new string [REF_SIZE];
@@ -580,22 +565,22 @@ int main(int argc, char* argv[]){
   		cout << endl << asctime (timeinfo);	
   		foutLog << endl << asctime (timeinfo);
 		
-		cout << "Identify " << LOCI+LOCI_trim+unmatchSite+Lex << " loci shared by STUDY_FILE and GENO_FILE." << endl;
-		foutLog << "Identify " << LOCI+LOCI_trim+unmatchSite+Lex << " loci shared by STUDY_FILE and GENO_FILE." << endl;		
-		if(unmatchSite>0){
+		cout << "Identified " << LOCI + LOCI_trim + unmatchSite + Lex << " loci shared by STUDY_FILE and GENO_FILE." << endl;
+		foutLog << "Identified " << LOCI + LOCI_trim + unmatchSite + Lex << " loci shared by STUDY_FILE and GENO_FILE." << endl;
+		if (unmatchSite > 0){
 			cout << "Exclude "<< unmatchSite << " loci that have different alleles in two datasets." << endl;
 			foutLog << "Exclude "<< unmatchSite << " loci that have different alleles in two datasets." << endl;
 		}
-		if(Lex>0){
+		if (Lex > 0) {
 			cout << "Exclude " << Lex << " loci given by the EXCLUDE_LIST (-ex)." << endl;
 			foutLog << "Exclude " << Lex << " loci given by the EXCLUDE_LIST (-ex)." << endl;
 		}
-		if(TRIM_PROP>0){
+		if (TRIM_PROP > 0) {
 			cout << "Exclude " << LOCI_trim << " random loci by the TRIM_PROP (-M) option." << endl;
 			foutLog << "Exclude " << LOCI_trim << " random loci by the TRIM_PROP (-M) option." << endl;
 		}	
-		cout << "The analysis will base on the remaining " << LOCI << " shared loci." << endl; 						
-		foutLog << "The analysis will base on the remaining " << LOCI << " shared loci." << endl;	
+		cout << "The analysis will based on the remaining " << LOCI << " shared loci." << endl;
+		foutLog << "The analysis will based on the remaining " << LOCI << " shared loci." << endl;
 		if(LOCI==0){
 			cout << "Error: No data for the analysis. Program exit!" << endl;
 			foutLog << "Error: No data for the analysis. Program exit!" << endl;
@@ -604,56 +589,44 @@ int main(int argc, char* argv[]){
 			return 1;
 		}		
 		//=====================================================================================
-		fin.open(GENO_FILE.c_str());
-		if(fin.fail()){
-			cerr << "Error: cannot find the GENO_FILE '" << GENO_FILE << "'." << endl;    
-			foutLog << "Error: cannot find the GENO_FILE '" << GENO_FILE << "'." << endl;   
-			foutLog.close();
-			gsl_rng_free(rng);
-			return 1;
-		}		
- 		time ( &rawtime );
-  		timeinfo = localtime ( &rawtime );
-  		cout << endl << asctime (timeinfo);	
-		cout << "Reading reference genotype data ..." << endl;
-  		foutLog << endl << asctime (timeinfo);
-		foutLog << "Reading reference genotype data ..." << endl;
-		for(i=0; i<GENO_NON_DATA_ROWS; i++){
-			getline(fin, str);          // Read non-data rows
-		}
-		int ii = 0;
-		for(i=0; i<REF_INDS; i++){
-			if(i==Refset[ii]){
-				fin >> RefInfo1[ii] >> RefInfo2[ii];
-				for(j=2; j<GENO_NON_DATA_COLS; j++){
-					fin >> str;
-				}
-				frowvec tmpG = zeros<frowvec>(LOCI_G);
-				for(j=0; j<LOCI_G; j++){
-					fin >> tmpG(j);    // Read genotype data
-				}
-				for(j=0; j<LOCI; j++){
-					RefD(ii,j) = tmpG(cmnG(j));
-				}
-				getline(fin, str);
-				ii++;
-			}else{
-				getline(fin, str);
-			}
-			if(ii==REF_SIZE){
-				break;
-			}
-		}
-		if(!fin.good()){
-			fin.close();
-			cerr << "Error: ifstream error occurs when reading the GENO_FILE." << endl;
-			foutLog << "Error: ifstream error occurs when reading the GENO_FILE." << endl;
-			foutLog.close();
-			gsl_rng_free(rng);
-			return 1;
-		}		
-		fin.close();		
+
+		TableReader reader;
+		vector<string> tokens;
+		int row = 0;
+		int ref_ind = 0;
+		int ref_subset_ind = 0;
+
+		reader.set_file_name(GENO_FILE);
+
+        time ( &rawtime );
+        timeinfo = localtime ( &rawtime );
+        cout << endl << asctime (timeinfo);
+        cout << "Reading reference genotype data ..." << endl;
+        foutLog << endl << asctime (timeinfo);
+        foutLog << "Reading reference genotype data ..." << endl;
+
+        reader.open();
+        while(reader.read_row(tokens, '\t') >= 0) {
+            ++row;
+            if (row <= GENO_NON_DATA_ROWS) { // skip any headers
+                continue;
+            }
+            if (ref_ind == Refset[ref_subset_ind]) {
+                RefInfo1[ref_subset_ind] = tokens[0];
+                RefInfo2[ref_subset_ind] = tokens[1];
+                for(unsigned int i = 0; i < LOCI; ++i) {
+                    RefD(ref_subset_ind, i) = stof(tokens.at(GENO_NON_DATA_COLS + cmnG(i)));
+                }
+                ++ref_subset_ind;
+                if (ref_subset_ind >= REF_SIZE) {
+                    break;
+                }
+            }
+            ++ref_ind;
+        }
+		reader.close();
 	}
+
 	//===============================================================================
 	time ( &rawtime );
 	timeinfo = localtime ( &rawtime );
@@ -665,6 +638,7 @@ int main(int argc, char* argv[]){
 	fmat RefSD(LOCI,1);
 	normalize(RefD, RefMean, RefSD);		
 	mat RefM = conv_to<mat>::from(RefD*RefD.t());
+
 	//========================= Get reference coordinates  ==========================
 	if(COORD_FILE.compare(default_str)!=0 && GENO_FILE.compare(default_str)!=0){		
 		fin.open(COORD_FILE.c_str());
@@ -772,21 +746,20 @@ int main(int argc, char* argv[]){
 	}
 			
 	//========================= Read genotype data of the study sample ==========================
-	fin.open(STUDY_FILE.c_str());
-	if(fin.fail()){
-		delete [] RefInfo1;
-		delete [] RefInfo2;
-		cerr << "Error: cannot find the STUDY_FILE '"<< STUDY_FILE <<"'." << endl;
-		foutLog << "Error: cannot find the STUDY_FILE '"<< STUDY_FILE <<"'." << endl;
-		foutLog.close();
-		gsl_rng_free(rng);		
-		return 1;
-	}
+
+    TableReader reader;
+    vector<string> tokens;
+    int row = 0;
+    i = 0;
+
+    reader.set_file_name(STUDY_FILE.c_str());
+    reader.open();
+
 	//==== Open output file ====
 	outfile = OUT_PREFIX;
 	outfile.append(".ProPC.coord");
 	fout.open(outfile.c_str());
-	if(fout.fail()){
+	if(fout.fail()) {
 		delete [] RefInfo1;
 		delete [] RefInfo2;
 		cerr << "Error: cannot create a file named " << outfile << "." << endl;
@@ -806,204 +779,196 @@ int main(int argc, char* argv[]){
 	cout << "Analyzing study individuals ..." << endl;
   	foutLog << endl << asctime (timeinfo);	
 	foutLog << "Analyzing study individuals ..." << endl;
-	
-	if(DIM_HIGH == 0){
+
+	if (DIM_HIGH == 0) {
 		AUTO_MODE = true;
 	}
-	
-	for(i=0; i<STUDY_NON_DATA_ROWS; i++){
-		getline(fin, str);          // Read non-data rows
+
+	while (reader.read_row(tokens, '\t') >= 0) {
+	    ++row;
+	    if (row <= STUDY_NON_DATA_ROWS) { // skip header lines;
+	        continue;
+	    }
+	    ++i;
+        if (i < FIRST_IND) {
+            continue;
+        }
+        if (i > LAST_IND) {
+            break;
+        }
+        string Info1 = tokens[0];
+		string Info2 = tokens[1];
+		frowvec tmpG(LOCI_S);
+		frowvec G_one(LOCI);
+		int Lm = 0;           // Number of loci that are missing data
+
+        for (j = 0; j < LOCI; ++j) {
+            G_one(j) =  stof(tokens.at(STUDY_NON_DATA_COLS + cmnS(j)));
+            if (G_one(j) == -9) {
+                Lm++;
+            } else if (MASK_PROP > 0) {
+                if(gsl_rng_uniform(rng) < MASK_PROP) {
+                    G_one(j) = -9;
+                    Lm++;
+                }
+            }
+        }
+
+        if((LOCI-Lm) >= MIN_LOCI){
+            //=================== Calculate covariance matrix ======================
+            uvec mSites(Lm);
+            uvec nSites(LOCI-Lm);
+            int sm=0;
+            int sn=0;
+            frowvec D_one = zeros<frowvec>(LOCI);
+            for(j=0; j<LOCI; j++){
+                if(G_one(j)!=-9 && RefSD(j)!=0){
+                    D_one(j) = (G_one(j)-RefMean(j))/RefSD(j);
+                }
+                if(G_one(j)==-9){
+                    mSites(sm) = j;
+                    sm++;
+                }else{
+                    nSites(sn) = j;
+                    sn++;
+                }
+            }
+            mat M;
+            if(sn>sm){
+                if(sm>0){
+                    fmat subD = RefD.cols(mSites);
+                    M = RefM-conv_to<mat>::from(subD*subD.t());
+                }else{
+                    M = RefM;
+                }
+            }else{
+                fmat subD = RefD.cols(nSites);
+                M = conv_to<mat>::from(subD*subD.t());
+            }
+            mSites.clear();
+            nSites.clear();
+            mat tmprow = conv_to<mat>::from(D_one*RefD.t());
+            M.insert_rows(REF_SIZE, tmprow);
+            mat tmpmat = conv_to<mat>::from(D_one*D_one.t());
+            tmprow.insert_cols(REF_SIZE, tmpmat);
+            M.insert_cols(REF_SIZE, tmprow.t());
+            G_one.clear();
+            D_one.clear();
+            tmprow.clear();
+            tmpmat.clear();
+            // =============================== Eigen Decomposition ==============================
+            vec eigval;
+            mat eigvec;
+            eig_sym(eigval, eigvec, M, "dc");
+
+            //ofstream foutM;
+            //foutM.open("testM.txt");
+            //foutM << M << endl;
+            //foutM.close();
+            // M.clear();
+
+            // ####    Calculate Tracy-Widom Statistics and determine DIM_HIGH  ####
+            // Calculation of TW statistic follows Patterson et al 2006 PLoS Genetics
+            if(AUTO_MODE){
+                DIM_HIGH = 0;
+                double eigsum = 0;
+                double eig2sum = 0;
+                double eigsum2 = 0;
+                for(j=0; j<REF_SIZE; j++){     // The length of eigval is REF_SIZE+1;
+                    eigsum += eigval(j+1);
+                    eig2sum += pow(eigval(j+1), 2);
+                }
+                for(j=0; j<REF_SIZE; j++){
+                    int m = REF_SIZE-j;
+                    if(j>0){
+                        eigsum -= eigval(m+1);
+                        eig2sum -= pow(eigval(m+1),2);
+                    }
+                    eigsum2 = eigsum*eigsum;
+                    double n = (m+1)*eigsum2/((m-1)*eig2sum-eigsum2);
+                    double nsqrt = sqrt(n-1);
+                    double msqrt = sqrt(m);
+                    double mu = pow(nsqrt+msqrt, 2)/n;
+                    double sigma = (nsqrt+msqrt)/n*pow(1/nsqrt+1/msqrt, 1.0/3);
+                    double x = (m*eigval(m)/eigsum-mu)/sigma;  // Tracy-Widom statistic
+                    if(x>TW){           // TW is the threshold for the Tracy-Widom statisic
+                        DIM_HIGH++;
+                    }else{
+                        break;
+                    }
+                }
+                if(DIM_HIGH<DIM){
+                    DIM_HIGH = DIM;
+                    cout << "Warning: DIM is greater than the number of significant PCs for study sample " << i << "." << endl;
+                    foutLog << "Warning: DIM is greater than the number of significant PCs for study sample " << i << "." << endl;
+                }
+            }
+            //#################################################################################
+
+            rowvec PC_one = zeros<rowvec>(DIM_HIGH);
+            mat refPC_new = zeros<mat>(REF_SIZE,DIM_HIGH);
+            for(j=0; j<DIM_HIGH; j++){
+                for(k=0; k<REF_SIZE; k++){
+                    refPC_new(k,j) = eigvec(k, REF_SIZE-j)*sqrt(eigval(REF_SIZE-j));
+                }
+                PC_one(j) = eigvec(REF_SIZE, REF_SIZE-j)*sqrt(eigval(REF_SIZE-j));
+            }
+            eigval.clear();
+            eigvec.clear();
+            //=================  Procrustes Analysis =======================
+            mat refPC_rot(REF_SIZE, DIM_HIGH);
+            double t;
+            double rho;
+            mat A(DIM_HIGH, DIM_HIGH);
+            rowvec b(DIM_HIGH);
+            double epsilon = pprocrustes(refPC_new, refPC, refPC_rot, t, rho, A, b, MAX_ITER, THRESHOLD, PROCRUSTES_SCALE);
+            if(epsilon>THRESHOLD){
+                cout << "Warning: Projection Procrustes analysis doesn't converge in " << MAX_ITER << " iterations for " << Info2 <<", THRESHOLD=" << THRESHOLD << "." << endl;
+                foutLog << "Warning: Projection Procrustes analysis doesn't converge in " << MAX_ITER << " iterations for " << Info2 <<", THRESHOLD=" << THRESHOLD << "." << endl;
+            }
+            refPC_new.clear();
+            refPC_rot.clear();
+            rowvec rotPC_one = rho*PC_one*A+b;
+            if(DIM_HIGH > DIM){
+                rotPC_one.shed_cols(DIM, DIM_HIGH-1);
+            }
+
+            //== Calculating Z score to indicate if an individual's ancestry is represented in the reference ==
+            vec d1 = zeros<vec>(REF_SIZE);
+            for(j=0; j<REF_SIZE; j++){
+                rowvec v = rotPC_one-refPC.row(j);
+                for(k=0; k<DIM; k++) d1(j) += v(k)*v(k);
+            }
+            uvec idx = sort_index(d1);
+            vec Mk = zeros<vec>(KNN_ZSCORE);
+            for(j=0; j<KNN_ZSCORE; j++) Mk(j) = M(idx(j),idx(j));
+            double Z = (M(REF_SIZE,REF_SIZE)-mean(Mk))/stddev(Mk);
+
+            //================= Output Procrustes Results ===================
+            fout << Info1 << "\t" << Info2 << "\t" << (LOCI-Lm) << "\t" << DIM_HIGH << "\t" << t << "\t" << Z << "\t";
+            for(j=0; j<DIM-1; j++){
+                fout << rotPC_one(j) << "\t";
+            }
+            fout << rotPC_one(DIM-1) << endl;
+        }else{
+            fout << Info1 << "\t" << Info2 << "\t" << (LOCI-Lm) << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
+            for(j=0; j<DIM-1; j++){
+                fout << "NA" << "\t";
+            }
+            fout << "NA" << endl;
+        }
+        if(i%100==0){
+            cout << "Progress: finish analysis of individual " << i << "." << endl;
+            foutLog << "Progress: finish analysis of individual " << i << "." << endl;
+        }
 	}
 
-	for(i=1; i<=LAST_IND; i++){
-		if(i<FIRST_IND){
-			getline(fin, str);
-		}else{
-			string Info1;
-			string Info2;
-			frowvec tmpG(LOCI_S);
-			frowvec G_one(LOCI);
-			int Lm = 0;           // Number of loci that are missing data
-			fin >> Info1 >> Info2;
-			for(j=2; j<STUDY_NON_DATA_COLS; j++){
-				fin >> str;
-			}
-			for(j=0; j<LOCI_S; j++){
-				fin >> tmpG(j);
-			}			
-			for(j=0; j<LOCI; j++){
-				G_one(j) = tmpG(cmnS(j));
-				if(G_one(j)==-9){
-					Lm++;
-				}else if(MASK_PROP>0){
-					if(gsl_rng_uniform(rng)<MASK_PROP){
-						G_one(j) = -9;
-						Lm++;
-					}
-				}
-			}
-			if((LOCI-Lm) >= MIN_LOCI){
-				//=================== Calculate covariance matrix ======================
-				uvec mSites(Lm);
-				uvec nSites(LOCI-Lm);
-				int sm=0;
-				int sn=0;
-				frowvec D_one = zeros<frowvec>(LOCI);
-				for(j=0; j<LOCI; j++){
-					if(G_one(j)!=-9 && RefSD(j)!=0){
-					 	D_one(j) = (G_one(j)-RefMean(j))/RefSD(j);
-					}
-					if(G_one(j)==-9){
-						mSites(sm) = j;
-						sm++;
-					}else{
-						nSites(sn) = j;
-						sn++;
-					}
-				}
-				mat M;
-				if(sn>sm){
-					if(sm>0){
-						fmat subD = RefD.cols(mSites);
-						M = RefM-conv_to<mat>::from(subD*subD.t());
-					}else{
-						M = RefM;
-					}
-				}else{
-					fmat subD = RefD.cols(nSites);
-					M = conv_to<mat>::from(subD*subD.t());
-				}
-				mSites.clear();
-				nSites.clear();
-				mat tmprow = conv_to<mat>::from(D_one*RefD.t());
-				M.insert_rows(REF_SIZE, tmprow);
-				mat tmpmat = conv_to<mat>::from(D_one*D_one.t());
-				tmprow.insert_cols(REF_SIZE, tmpmat);
-				M.insert_cols(REF_SIZE, tmprow.t());
-				G_one.clear();	
-				D_one.clear();
-				tmprow.clear();
-				tmpmat.clear();
-				// =============================== Eigen Decomposition ==============================	
-				vec eigval;
-				mat eigvec;	
-				eig_sym(eigval, eigvec, M, "dc");	
-				
-				//ofstream foutM;	
-				//foutM.open("testM.txt");
-				//foutM << M << endl;
-				//foutM.close();
-				// M.clear();
-								
-				// ####    Calculate Tracy-Widom Statistics and determine DIM_HIGH  ####
-				// Calculation of TW statistic follows Patterson et al 2006 PLoS Genetics 
-				if(AUTO_MODE){
-					DIM_HIGH = 0;
-					double eigsum = 0;
-					double eig2sum = 0;
-					double eigsum2 = 0;
-					for(j=0; j<REF_SIZE; j++){     // The length of eigval is REF_SIZE+1;
-						eigsum += eigval(j+1);
-						eig2sum += pow(eigval(j+1), 2);
-					}
-					for(j=0; j<REF_SIZE; j++){
-						int m = REF_SIZE-j;
-						if(j>0){
-							eigsum -= eigval(m+1);
-							eig2sum -= pow(eigval(m+1),2);
-						}
-						eigsum2 = eigsum*eigsum;
-						double n = (m+1)*eigsum2/((m-1)*eig2sum-eigsum2);
-						double nsqrt = sqrt(n-1);
-						double msqrt = sqrt(m);
-						double mu = pow(nsqrt+msqrt, 2)/n;
-						double sigma = (nsqrt+msqrt)/n*pow(1/nsqrt+1/msqrt, 1.0/3);
-						double x = (m*eigval(m)/eigsum-mu)/sigma;  // Tracy-Widom statistic
-						if(x>TW){           // TW is the threshold for the Tracy-Widom statisic
-							DIM_HIGH++;
-						}else{
-							break;
-						}
-					}
-					if(DIM_HIGH<DIM){
-						DIM_HIGH = DIM;
-						cout << "Warning: DIM is greater than the number of significant PCs for study sample " << i << "." << endl;
-						foutLog << "Warning: DIM is greater than the number of significant PCs for study sample " << i << "." << endl;
-					}
-				}
-				//#################################################################################	
-				
-				rowvec PC_one = zeros<rowvec>(DIM_HIGH);
-				mat refPC_new = zeros<mat>(REF_SIZE,DIM_HIGH);			
-				for(j=0; j<DIM_HIGH; j++){
-					for(k=0; k<REF_SIZE; k++){
-						refPC_new(k,j) = eigvec(k, REF_SIZE-j)*sqrt(eigval(REF_SIZE-j));
-					}
-					PC_one(j) = eigvec(REF_SIZE, REF_SIZE-j)*sqrt(eigval(REF_SIZE-j));	
-				}
-				eigval.clear();
-				eigvec.clear();
-				//=================  Procrustes Analysis =======================
-				mat refPC_rot(REF_SIZE, DIM_HIGH);
-				double t;
-				double rho;
-				mat A(DIM_HIGH, DIM_HIGH);
-				rowvec b(DIM_HIGH);
-				double epsilon = pprocrustes(refPC_new, refPC, refPC_rot, t, rho, A, b, MAX_ITER, THRESHOLD, PROCRUSTES_SCALE);
-				if(epsilon>THRESHOLD){
-					cout << "Warning: Projection Procrustes analysis doesn't converge in " << MAX_ITER << " iterations for " << Info2 <<", THRESHOLD=" << THRESHOLD << "." << endl;
-					foutLog << "Warning: Projection Procrustes analysis doesn't converge in " << MAX_ITER << " iterations for " << Info2 <<", THRESHOLD=" << THRESHOLD << "." << endl;
-				}				
-				refPC_new.clear();
-				refPC_rot.clear();
-				rowvec rotPC_one = rho*PC_one*A+b;
-				if(DIM_HIGH > DIM){
-					rotPC_one.shed_cols(DIM, DIM_HIGH-1);
-				}
-				
-				//== Calculating Z score to indicate if an individual's ancestry is represented in the reference ==
-				vec d1 = zeros<vec>(REF_SIZE);
-				for(j=0; j<REF_SIZE; j++){
-					rowvec v = rotPC_one-refPC.row(j);
-					for(k=0; k<DIM; k++) d1(j) += v(k)*v(k);
-				}
-				uvec idx = sort_index(d1);
-				vec Mk = zeros<vec>(KNN_ZSCORE);
-				for(j=0; j<KNN_ZSCORE; j++) Mk(j) = M(idx(j),idx(j));
-				double Z = (M(REF_SIZE,REF_SIZE)-mean(Mk))/stddev(Mk);
-
-				//================= Output Procrustes Results ===================				
-				fout << Info1 << "\t" << Info2 << "\t" << (LOCI-Lm) << "\t" << DIM_HIGH << "\t" << t << "\t" << Z << "\t";	
-				for(j=0; j<DIM-1; j++){
-					fout << rotPC_one(j) << "\t";
-				}
-				fout << rotPC_one(DIM-1) << endl;
-			}else{
-				fout << Info1 << "\t" << Info2 << "\t" << (LOCI-Lm) << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";	
-				for(j=0; j<DIM-1; j++){
-					fout << "NA" << "\t";
-				}
-				fout << "NA" << endl;				
-			}
-			if(i%100==0){	
-				cout << "Progress: finish analysis of individual " << i << "." << endl;
-				foutLog << "Progress: finish analysis of individual " << i << "." << endl;			
-			}
-		}
-	}
-	gsl_rng_free (rng);
+	gsl_rng_free(rng);
 	delete [] RefInfo1;
 	delete [] RefInfo2;
-	
-	if(!fin.good()){
-		fin.close();
-		fout.close();
-		cerr << "Error: ifstream error occurs when reading the STUDY_FILE." << endl;
-		foutLog << "Error: ifstream error occurs when reading the STUDY_FILE." << endl;
-		foutLog.close();
-		return 1;
-	}
-	fin.close();
+
+	reader.close();
+
 	fout.close();
 	cout << "Procrustean PCA coordinates are output to '" << outfile << "'." << endl;
 	foutLog << "Procrustean PCA coordinates are output to '" << outfile << "'." << endl;
@@ -1110,23 +1075,23 @@ int normalize(fmat &G, fmat &Gm, fmat &Gsd){
 	int N = G.n_rows;
 	int L = G.n_cols;
 	Gm = mean(G,0);
-	for(j=0; j<L; j++){
+	for (j = 0; j < L; j++) {
 		fvec Gj = G.col(j);
-		uvec mis = find(Gj==-9);  //find missing elements
+		uvec mis = find(Gj == -9);  //find missing elements
 		int M = mis.n_elem;
-		if(M>0){		
-			Gm(j) = (Gm(j)*N+9*M)/(N-M);
-			for(i=0; i<M; i++){
+		if (M > 0) { // TODO: Should we do a sanity check and report if M is very high. Average imputation will not work if there are a lot of missing values.
+            Gm(j) = (Gm(j) * N + 9 * M) / (N - M);
+			for (i = 0; i < M; i++) {
 				G(mis(i),j) = Gm(j);
 			}
 		}
 	}
-	Gsd = stddev(G,0);
- 	for(int j=0; j<L; j++){
-		if(Gsd(j)==0){    // Monophmorphic sites are set to 0
+	Gsd = stddev(G, 0);
+ 	for (int j = 0; j < L; j++){
+		if (Gsd(j) == 0) {    // Monophmorphic sites are set to 0
 			G.col(j) = zeros<fvec>(N);
-		}else{
-			G.col(j) = (G.col(j)-Gm(j))/Gsd(j);
+		} else {
+			G.col(j) = (G.col(j) - Gm(j)) / Gsd(j);
 		}
 	}
 	return 1;
@@ -1231,157 +1196,105 @@ double pprocrustes(mat &X, mat &Y, mat &Xnew, double &t, double &rho, mat &A, ro
 		return epsilon; 
 	}
 }
+
 //################# Function to check the STUDY_FILE format  ##################
 // Allowing arbitrary poidy (i.e. genotypes are coded as 0, 1, 2, ..., p for a p-ploidy organism, -9 represents missing data)
-int check_format_geno(string filename, int inds, int loci){
-	string str;
-	int nrow = 0;
-	int ncol = 0;
-	ifstream fin;
-	fin.open(filename.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the file '" << filename << "'." << endl;    
-		foutLog << "Error: cannot find the file '" << filename << "'." << endl;   
-		return 0;
-	}
-	//==========================================================		
-	while(nrow < GENO_NON_DATA_ROWS){
-		getline(fin, str);     // Read in non-data rows
-		nrow+=1;
-	}
-	while(!fin.eof()){
-		getline(fin, str);
-		if(str.length()>0 && str!=" "){
-			nrow+=1;
-			ncol=0;
-			bool tab=true;    //Previous character is a tab
-			for(int i=0; i<str.length(); i++){
-				bool missing=false;     
-				if(str[i]!='\t' && i==0){        //Read in the first element
-					ncol+=1;
-					tab=false;
-				}else if(str[i]!='\t' && i>0){
-					if(tab){
-						ncol+=1;
-					}
-					if(ncol>GENO_NON_DATA_COLS && (str[i]<'0' || str[i]>'9')){  // Allowing arbitrary poidy 
-						if(i<(str.length()-2)){
-							if(str[i]=='-'&&str[i+1]=='9'&&str[i+2]=='\t' && tab){
-								missing = true;
-							}
-						}else if(i==(str.length()-2)){
-							if(str[i]=='-'&&str[i+1]=='9' && tab){
-								missing = true;
-							}
-						}
-						if(missing == false){
-							cerr<<"Error: invalid value in (row "<<nrow<<", column "<< ncol <<") in the file '" << filename << "'."<<endl;
-							foutLog<<"Error: invalid value in (row "<<nrow<<", column "<< ncol <<") in the file '" << filename << "'."<<endl;
-							fin.close();
-							return 0;
-						}
-					}
-					tab=false;
-				}else if(str[i]=='\t'){
-					tab=true;
-				}
-			}
-			if(ncol!=(loci+GENO_NON_DATA_COLS)){
-				cerr << "Error: incorrect number of loci in row " << nrow <<" in '" << filename << "'."<<endl;
-				foutLog << "Error: incorrect number of loci in row "<< nrow <<" in '" << filename << "'."<<endl;
-				cout << ncol << "\t" << loci << endl;
-				fin.close();
-				return 0;
-			}
-		}
-	}
-	if(nrow!=(inds+GENO_NON_DATA_ROWS)){
-		cerr << "Error: incorrect number of individuals in the file '" << filename <<"'." << endl;
-		foutLog << "Error: incorrect number of individuals in the file '" << filename <<"'." << endl;
-		fin.close();
-		return 0;
-	}
-	fin.close();
+int check_format_geno(string filename, int inds, int loci) {
+    vector<string> tokens;
+    int nrow = 0;
+
+    TableReader reader;
+    reader.set_file_name(filename);
+    reader.open();
+
+    while (reader.read_row(tokens, '\t') >= 0) {
+        ++nrow;
+        if (nrow <= GENO_NON_DATA_ROWS) { // Skip non-data rows
+            continue;
+        }
+        if (tokens.size() != loci + GENO_NON_DATA_COLS) {
+            cerr << "Error: incorrect number of loci in row " << nrow <<" in '" << filename << "'."<<endl;
+            foutLog << "Error: incorrect number of loci in row "<< nrow <<" in '" << filename << "'."<<endl;
+            return 0; // incorrect number of columns or empty row
+        }
+        for (unsigned int i = GENO_NON_DATA_COLS; i < tokens.size(); ++i) {
+            if (tokens[i].length() == 0) {
+                cerr << "Error: empty field at (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
+                foutLog << "Error: empty field at (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
+                return 0;
+            } else {
+                if (tokens[i].compare("-9") != 0) {
+                    if (tokens[i].find_first_not_of("0123456789") != string::npos) {
+                        cerr << "Error: invalid value in (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
+                        foutLog << "Error: invalid value in (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
+                        return 0; // incorrect column value;
+                    }
+                }
+            }
+        }
+    }
+
+    if (nrow != (inds + GENO_NON_DATA_ROWS)) {
+        cerr << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
+        foutLog << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
+        return 0;
+    }
+
+    reader.close();
 	return 1;
 }
+
 //################# Function to check the COORD_FILE format  ##################
-int check_format_coord(string filename, int inds, int npcs){
-	string str;
-	int nrow = 0;
-	int ncol = 0;
-	ifstream fin;
-	fin.open(filename.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the file '" << COORD_FILE << "'." << endl;    
-		foutLog << "Error: cannot find the file '" << COORD_FILE << "'." << endl;   
-		return 0;
-	}
-	//==========================================================	
-	while(nrow < COORD_NON_DATA_ROWS){
-		getline(fin, str);     // Read in non-data rows
-		nrow+=1;
-	}
-	while(!fin.eof()){
-		getline(fin, str);
-		if(str.length()>0 && str!=" "){
-			nrow+=1;
-			ncol=0;
-			bool tab=true;   //Previous character is a tab
-			bool dot=false;    // A dot has been found after the last space 
-			bool dash=false;
-			bool exp=false;
-			for(int i=0; i<str.length(); i++){    
-				if(str[i]!='\t' && i==0){        //Read in the first element
-					ncol+=1;
-					tab=false;
-				}else if(str[i]!='\t' && i>0 && tab){
-					ncol+=1;
-					tab=false;
-					if(ncol>COORD_NON_DATA_COLS && (str[i]<'0' || str[i]>'9') && str[i]!='-'){
-						cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<< ") in the file '" << filename << "'."<<endl;
-						foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<< ") in the file '" << filename << "'."<<endl;
-						fin.close();
-						return 0;
-					}
-				}else if(str[i]!='\t' && i>0 && !tab){
-					if(ncol>COORD_NON_DATA_COLS && (str[i]<'0' || str[i]>'9')){
-						if(str[i]=='.' && dot==false){
-							dot=true;
-						}else if(str[i]=='-' && (str[i-1]=='e' || str[i-1]=='E') && dash==false){
-							dash=true;
-						}else if(str[i]=='e' || str[i]=='E' && exp==false){
-							exp=true;
-						}else{
-							cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<< ") in the file '" << filename << "'."<<endl;
-							foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<< ") in the file '" << filename << "'."<<endl;
-							fin.close();
-							return 0;
-						}
-					}
-				}else if(str[i]=='\t'){
-					tab=true;
-					dot=false;
-					dash=false;
-					exp=false;
-				}
-			}
-			if(ncol!=(npcs+COORD_NON_DATA_COLS)){
-				cerr << "Error: incorrect number of PCs in row " << nrow << ") in the file '" << filename << "'."<<endl;
-				foutLog << "Error: incorrect number of PCs in row " << nrow << ") in the file '" << filename << "'."<<endl;
-				fin.close();
-				return 0;
-			}
-		}
-	}
-	if(nrow!=(inds+COORD_NON_DATA_ROWS)){
+int check_format_coord(string filename, int inds, int npcs) {
+    vector<string> tokens;
+    int nrow = 0;
+    size_t pos = 0;
+    float value = 0;
+
+    TableReader reader;
+    reader.set_file_name(filename);
+    reader.open();
+
+    while (reader.read_row(tokens, '\t') >= 0) {
+        ++nrow;
+        if (nrow <= COORD_NON_DATA_ROWS) {
+            continue;
+        }
+        if (tokens.size() != npcs + COORD_NON_DATA_COLS) {
+            cerr << "Error: incorrect number of PCs in row " << nrow << " in the file '" << filename << "'."<<endl;
+            foutLog << "Error: incorrect number of PCs in row " << nrow << " in the file '" << filename << "'."<<endl;
+            return 0; // incorrect number of columns or empty row
+        }
+        for (unsigned int i = COORD_NON_DATA_COLS; i < tokens.size(); ++i) {
+            if (tokens[i].length() == 0) {
+                cerr << "Error: no value at (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
+                foutLog << "Error: no value at (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
+                return 0;
+            } else {
+                try {
+                    value = stof(tokens[i], &pos);
+                    if ((pos != tokens[i].length()) || (isinf(value))) {
+                        throw runtime_error("");
+                    }
+                } catch (...) {
+                    cerr << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
+                    foutLog << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
+                    return 0;
+                }
+            }
+        }
+    }
+
+  	if(nrow != (inds + COORD_NON_DATA_ROWS)) {
 		cerr << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
 		foutLog << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
-		fin.close();
 		return 0;
 	}
-	fin.close();
+
+    reader.close();
 	return 1;
-}	
+}
+
 //################# Function to create an empty paramfile  ##################
 int create_paramfile(string filename){
 	ofstream fout;
@@ -2012,36 +1925,4 @@ int check_parameters(){
 	}	
 	//============================================================================
 	return flag;
-}
-//################# Function to calculate input table file dimension  ##################
-bool get_table_dim(int &nrow, int &ncol, string filename, char separator){
-	ifstream fin;
-	string str;
-	nrow = 0;
-	ncol = 0;
-	fin.open(filename.c_str());
-	if(fin.fail()){
-		return false;
-	}
-	while(!fin.eof()){
-		getline(fin, str);
-		if(str.length()>0 && str!=" "){
-			nrow+=1;
-			if(ncol==0){
-				bool is_sep=true;    //Previous character is a separator
-				for(int i=0; i<str.length(); i++){
-					if(str[i]!=separator && i==0){        //Read in the first element
-						ncol+=1;
-						is_sep=false;
-					}else if(str[i]!=separator && i>0 && is_sep){
-						ncol+=1;
-						is_sep=false;
-					}else if(str[i]==separator){
-						is_sep=true;
-					}	
-				}
-			}
-		}
-	}
-	return true;
 }

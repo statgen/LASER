@@ -9,6 +9,7 @@ endforeach()
 
 find_library(OPENBLAS_LIB openblas HINT ${CGET_PREFIX}/lib)
 find_library(GSL_LIB gsl HINT ${CGET_PREFIX}/lib)
+find_library(Z_LIB NAMES libz.a z HINT ${CGET_PREFIX}/lib)
 find_package(Threads REQUIRED)
 find_package(OpenMP REQUIRED)
 
@@ -25,14 +26,16 @@ if(NOT TARGET OpenMP::OpenMP_CXX)
     set_property(TARGET OpenMP::OpenMP_CXX PROPERTY INTERFACE_LINK_LIBRARIES ${OpenMP_CXX_FLAGS} Threads::Threads)
 endif()
 
+message(STATUS "zlib = ${Z_LIB}")
 message(STATUS "gfortran = ${GFORTRAN_LIB}")
 message(STATUS "OpenBLAS = ${OPENBLAS_LIB}")
 message(STATUS "GSL = ${GSL_LIB}")
 
 add_executable(laser laser.cpp)
-target_link_libraries(laser OpenMP::OpenMP_CXX ${GSL_LIB} ${OPENBLAS_LIB} ${GFORTRAN_LIB} Threads::Threads)
+target_link_libraries(laser OpenMP::OpenMP_CXX ${Z_LIB} ${GSL_LIB} ${OPENBLAS_LIB} ${GFORTRAN_LIB} Threads::Threads)
 
-add_executable(trace trace.cpp)
-target_link_libraries(trace OpenMP::OpenMP_CXX ${GSL_LIB} ${OPENBLAS_LIB} ${GFORTRAN_LIB} Threads::Threads)
+set(SOURCE_FILES trace.cpp aux.cpp aux.h TableReader.cpp TableReader.h)
+add_executable(trace ${SOURCE_FILES})
+target_link_libraries(trace OpenMP::OpenMP_CXX ${Z_LIB} ${GSL_LIB} ${OPENBLAS_LIB} ${GFORTRAN_LIB} Threads::Threads)
 
 install(TARGETS laser trace DESTINATION bin)

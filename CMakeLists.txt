@@ -3,6 +3,7 @@ project(LASER VERSION 2.04)
 add_compile_options(-Wall -Wpedantic)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_CXX_STANDARD 14)
 
 enable_testing()
 
