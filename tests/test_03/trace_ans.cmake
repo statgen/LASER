@@ -3,4 +3,7 @@ if(trace_exit_code)
    message(FATAL_ERROR "TRACE failed.")
 endif()
 
-
+execute_process(COMMAND ${TESTLASER} test_propc_files good/test_trace.ProPC.coord test_trace.ProPC.coord ssddffff RESULT_VARIABLE test_exit_code)
+if(test_exit_code)
+   message(FATAL_ERROR "TRACE didn't replicate results.")
+endif()
