@@ -4,6 +4,7 @@ add_compile_options(-Wall -Wpedantic)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_CXX_STANDARD 14)
+set(CTEST_OUTPUT_ON_FAILURE TRUE)
 
 enable_testing()
 
