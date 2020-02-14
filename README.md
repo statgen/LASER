@@ -55,6 +55,6 @@ Wang et al. (2015). Improved ancestry estimation for both genotyping and sequenc
 ## Questions
 
 If you have questions, please read the LASER_Manual or the TRACE_Manual first.
-If the manuals cannot answer your questions, contact Chaolong Wang at chaolong@umich.edu.
+If the manuals cannot answer your questions, contact Chaolong Wang at chaolong@umich.edu or Daniel Taliun at dtaliun@umich.edu.
 
 
