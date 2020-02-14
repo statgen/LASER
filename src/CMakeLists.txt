@@ -32,10 +32,12 @@ message(STATUS "OpenBLAS = ${OPENBLAS_LIB}")
 message(STATUS "GSL = ${GSL_LIB}")
 
 add_executable(laser laser.cpp)
+target_include_directories(laser PUBLIC "${PROJECT_BINARY_DIR}")
 target_link_libraries(laser OpenMP::OpenMP_CXX ${Z_LIB} ${GSL_LIB} ${OPENBLAS_LIB} ${GFORTRAN_LIB} Threads::Threads)
 
 set(SOURCE_FILES trace.cpp aux.cpp aux.h TableReader.cpp TableReader.h)
 add_executable(trace ${SOURCE_FILES})
+target_include_directories(trace PUBLIC "${PROJECT_BINARY_DIR}")
 target_link_libraries(trace OpenMP::OpenMP_CXX ${Z_LIB} ${GSL_LIB} ${OPENBLAS_LIB} ${GFORTRAN_LIB} Threads::Threads)
 
 install(TARGETS laser trace DESTINATION bin)

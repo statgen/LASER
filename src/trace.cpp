@@ -16,6 +16,8 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "Version.h"
+
 #include "aux.h"
 #include "TableReader.h"
 #include <iostream>
@@ -161,22 +163,28 @@ int main(int argc, char* argv[]){
 		cerr << "Error: cannot create a temporary log file." << endl;
 		return 1;
 	}
-	
-	cout << endl;
-	cout << "=====================================================================" <<endl;
-	cout << "====    TRACE: fasT and Robust Ancestry Coordinate Estimation    ====" <<endl; 
-	cout << "====          Version 1.03, Last updated on Dec/30/2016          ====" <<endl;	
-	cout << "====          (C) 2013-2016 Chaolong Wang, GNU GPL v3.0          ====" <<endl;
-	cout << "=====================================================================" <<endl;
-  	cout << "Started at: " << asctime (timeinfo) << endl;
 
-	foutLog << "=====================================================================" <<endl;
-	foutLog << "====    TRACE: fasT and Robust Ancestry Coordinate Estimation    ====" <<endl;  
-	foutLog << "====          Version 1.03, Last updated on Dec/30/2016          ====" <<endl;	
-	foutLog << "====          (C) 2013-2016 Chaolong Wang, GNU GPL v3.0          ====" <<endl;
-	foutLog << "=====================================================================" <<endl;
-  	foutLog << "Started at: " << asctime (timeinfo) << endl;
-		
+    cout << endl;
+    cout << setfill('=') << setw(70) << "=" << endl;
+    cout << "==== " << setfill(' ') << setw(60) << left << "TRACE: fasT and Robust Ancestry Coordinate Estimation" << " ====" << endl;
+    cout << "==== " << "Version " << setfill(' ') << setw(52) << LASER_VERSION << " ====" << endl;
+    cout << "==== " << "Last modified on " << setfill(' ') << setw(43) << LAST_MODIFIED << " ====" << endl;
+    cout << "==== " << setfill(' ') << setw(60) << "(C) 2013-2017 Chaolong Wang, GNU GPL v3.0" << " ====" << endl;
+    cout << "==== " << setfill(' ') << setw(60) << "Maintained by Daniel Taliun" << " ====" << endl;
+    cout << setfill('=') << setw(70) << "=" << endl;
+    cout << setfill(' ');
+    cout << "Started at: " << asctime (timeinfo) << endl;
+
+    foutLog << endl;
+    foutLog << setfill('=') << setw(70) << "=" << endl;
+    foutLog << "==== " << setfill(' ') << setw(60) << left << "TRACE: fasT and Robust Ancestry Coordinate Estimation" << " ====" << endl;
+    foutLog << "==== " << "Version " << setfill(' ') << setw(52) << LASER_VERSION << " ====" << endl;
+    foutLog << "==== " << "Last modified on " << setfill(' ') << setw(43) << LAST_MODIFIED << " ====" << endl;
+    foutLog << "==== " << setfill(' ') << setw(60) << "(C) 2013-2017 Chaolong Wang, GNU GPL v3.0" << " ====" << endl;
+    foutLog << "==== " << setfill(' ') << setw(60) << "Maintained by Daniel Taliun" << " ====" << endl;
+    foutLog << setfill('=') << setw(70) << "=" << endl;
+    foutLog << setfill(' ');
+    foutLog << "Started at: " << asctime (timeinfo) << endl;
 
 	// ################ Read in command line ##########################
 	map<string,string> args;

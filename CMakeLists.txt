@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.8)
 project(LASER VERSION 2.04)
+
+set(LAST_MODIFIED "Feb/13/2020")
+
+configure_file(Version.h.in Version.h)
+
 add_compile_options(-Wall -Wpedantic)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
