@@ -17,7 +17,8 @@
 */
 
 #include "Version.h"
-
+#include "aux.h"
+#include "TableReader.h"
 #include <iostream>
 #include <iomanip>
 #include <fstream>
@@ -163,7 +164,6 @@ int simuseq(Mat<char> &G, urowvec &C, uvec &Loc, double e, fmat &S, gsl_rng *rng
 int simuseq2(Mat<char> &G, urowvec &C, uvec &Loc, frowvec &Q, fmat &S, gsl_rng *rng);
 
 int check_coverage(int output, int first_ind, int last_ind, uvec cmnS, urowvec &ExLoci, int &Ls, int &Lg);
-int check_format_geno(string filename, int inds, int loci);
 int check_format_seq(string filename, int inds, int loci);
 int check_format_coord(string filename, int inds, int npcs);
 bool get_table_dim(int &nrow, int &ncol, string filename, char separator);
@@ -395,12 +395,19 @@ int main(int argc, char* argv[]){
 	}		
 
 	if(GENO_FILE.compare(default_str) != 0 && flag == 1){
-		if(!get_table_dim(nrow, ncol, GENO_FILE, '\t')){
-			cerr << "Error: cannot open the file '" << GENO_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the file '" << GENO_FILE << "'." << endl; 
-			foutLog.close();
-			return 1;
-		}	
+        TableReader reader;
+
+        reader.set_file_name(GENO_FILE);
+        reader.open();
+        reader.get_dim(nrow, ncol, '\t');
+        reader.close();
+
+//		if(!get_table_dim(nrow, ncol, GENO_FILE, '\t')){
+//			cerr << "Error: cannot open the file '" << GENO_FILE << "'." << endl;
+//			foutLog << "Error: cannot open the file '" << GENO_FILE << "'." << endl;
+//			foutLog.close();
+//			return 1;
+//		}
 		REF_INDS = nrow - GENO_NON_DATA_ROWS;
 		int tmpLOCI = ncol - GENO_NON_DATA_COLS;
 		cout << REF_INDS << " individuals in the GENO_FILE." << endl; 
@@ -414,60 +421,98 @@ int main(int argc, char* argv[]){
 			cerr << "Error: Invalid number of columns in the GENO_FILE '" << GENO_FILE << "'." << endl;
 			foutLog << "Error: Invalid number of columns in the GENO_FILE '" << GENO_FILE << "'." << endl;
 			flag = 0;
-		}			
-		GENO_SITE_FILE = GENO_FILE;
-		GENO_SITE_FILE.replace(GENO_SITE_FILE.length()-5, 5, ".site");
-		fin.open(GENO_SITE_FILE.c_str());
-		if(fin.fail()){
-			cerr << "Error: cannot open the file '" << GENO_SITE_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the file '" << GENO_SITE_FILE << "'." << endl;   
-			foutLog.close();
-			return 1;
-		}else{
-			getline(fin, str);
-			LOCI_G = 0;
-			LOCI = 0;
-			while(!fin.eof()){
-				getline(fin, str);
-				if(str.length()>0 && str!=" "){
-					j=0;
-					int tabpos[5];
-					for(i=0; i<str.length(); i++){
-						if(str[i]=='\t' && j<5){
-							tabpos[j] = i;
-							j++;
-						}
-					}
-					str[tabpos[0]] = ':';
-					str[tabpos[3]] = ',';
-					string allele = str.substr(tabpos[2]+1,i-tabpos[2]-1);
-					string snpID = str.substr(tabpos[1]+1,tabpos[2]-tabpos[1]-1);
-					str.resize(tabpos[1]);
-					idxG[str] = LOCI_G;
-					alleleG[str] = allele;
-					LOCI_G++;
-					
-					if(SEQ_FILE.compare(default_str)!=0 && PCA_MODE==0){					
-						if(idxS.count(str)>0){
-							if(alleleS[str].compare(alleleG[str]) != 0){
-								cerr << "Warning: Two datasets have different alleles at locus [" << str << "]: ";
-								cerr << "[" << alleleG[str] << "] vs [" << alleleS[str] << "]." << endl;
-								foutLog << "Warning: Two datasets have different alleles at locus [" << str << "]: ";
-								foutLog << "[" << alleleG[str] << "] vs [" << alleleS[str] << "]." << endl;
-								unmatchSite++;
-							}else{
-								cmnsnp.push_back(str);
-								LOCI++;
-							}
-						}
-					}else{
-						cmnsnp.push_back(str);
-						LOCI++;
-					}
-				}	
-			}
-			fin.close();
 		}
+
+        GENO_SITE_FILE = build_sites_filename(GENO_FILE);
+        vector<string> tokens;
+        reader.set_file_name(GENO_SITE_FILE);
+        reader.open();
+        LOCI_G = 0;
+        LOCI = 0;
+        reader.read_row(tokens, '\t'); //skip header TODO: check if header = CHR\tPOS\tID\tREF\tALT
+        while (reader.read_row(tokens, '\t') >= 0) {
+            if (tokens.size() != 5) {
+                cerr << "Error: incorrect number of columns in '" << GENO_SITE_FILE << "'." << endl;
+                foutLog << "Error: incorrect number of columns in '" << GENO_SITE_FILE << "'." << endl;
+                foutLog.close();
+                return 1;
+            }
+            string variant_name = tokens.at(0) + ":" + tokens.at(1);
+            string variant_alleles = tokens.at(3) + "," + tokens.at(4);
+            idxG[variant_name] = LOCI_G;
+            alleleG[variant_name] = variant_alleles;
+            ++LOCI_G;
+            if((SEQ_FILE.compare(default_str) != 0) && (PCA_MODE == 0)) {
+                if (idxS.count(variant_name) > 0) {
+                    if (alleleS[variant_name].compare(variant_alleles) != 0 ) {
+                        cerr << "Warning: Two datasets have different alleles at locus [" << variant_name << "]: " << "[" << variant_alleles<< "] vs [" << alleleS[variant_name] << "]." << endl;
+                        foutLog << "Warning: Two datasets have different alleles at locus [" << variant_name << "]: " << "[" << variant_alleles << "] vs [" << alleleS[variant_name] << "]." << endl;
+                        ++unmatchSite;
+                    } else {
+                        cmnsnp.push_back(variant_name);
+                        ++LOCI;
+                    }
+                }
+            } else {
+                cmnsnp.push_back(variant_name);
+				++LOCI;
+            }
+        }
+        reader.close();
+
+//		GENO_SITE_FILE = GENO_FILE;
+//		GENO_SITE_FILE.replace(GENO_SITE_FILE.length()-5, 5, ".site");
+//        fin.open(GENO_SITE_FILE.c_str());
+//		if(fin.fail()){
+//			cerr << "Error: cannot open the file '" << GENO_SITE_FILE << "'." << endl;
+//			foutLog << "Error: cannot open the file '" << GENO_SITE_FILE << "'." << endl;
+//			foutLog.close();
+//			return 1;
+//		}else{
+//			getline(fin, str);
+//			LOCI_G = 0;
+//			LOCI = 0;
+//			while(!fin.eof()){
+//				getline(fin, str);
+//				if(str.length()>0 && str!=" "){
+//					j=0;
+//					int tabpos[5];
+//					for(i=0; i<str.length(); i++){
+//						if(str[i]=='\t' && j<5){
+//							tabpos[j] = i;
+//							j++;
+//						}
+//					}
+//					str[tabpos[0]] = ':';
+//					str[tabpos[3]] = ',';
+//					string allele = str.substr(tabpos[2]+1,i-tabpos[2]-1);
+//					string snpID = str.substr(tabpos[1]+1,tabpos[2]-tabpos[1]-1);
+//					str.resize(tabpos[1]);
+//					idxG[str] = LOCI_G;
+//					alleleG[str] = allele;
+//					LOCI_G++;
+//
+//					if(SEQ_FILE.compare(default_str)!=0 && PCA_MODE==0){
+//						if(idxS.count(str)>0){
+//							if(alleleS[str].compare(alleleG[str]) != 0){
+//								cerr << "Warning: Two datasets have different alleles at locus [" << str << "]: ";
+//								cerr << "[" << alleleG[str] << "] vs [" << alleleS[str] << "]." << endl;
+//								foutLog << "Warning: Two datasets have different alleles at locus [" << str << "]: ";
+//								foutLog << "[" << alleleG[str] << "] vs [" << alleleS[str] << "]." << endl;
+//								unmatchSite++;
+//							}else{
+//								cmnsnp.push_back(str);
+//								LOCI++;
+//							}
+//						}
+//					}else{
+//						cmnsnp.push_back(str);
+//						LOCI++;
+//					}
+//				}
+//			}
+//			fin.close();
+//		}
 		cout << LOCI_G << " loci in the GENO_FILE." << endl; 
 		foutLog << LOCI_G << " loci in the GENO_FILE." << endl;
 		
@@ -598,14 +643,22 @@ int main(int argc, char* argv[]){
 		cout << "Checking data format ..." << endl;
 		foutLog << endl << asctime (timeinfo);
 		foutLog << "Checking data format ..." << endl;
-		if(CHECK_FORMAT==1 || CHECK_FORMAT==2 || CHECK_FORMAT==10 || CHECK_FORMAT==20){
-			if(GENO_FILE.compare(default_str)!=0){
-				flag1 = check_format_geno(GENO_FILE, REF_INDS, LOCI_G);
-				if(flag1==1){
+		if ((CHECK_FORMAT == 1) || (CHECK_FORMAT == 2) || (CHECK_FORMAT == 10) || (CHECK_FORMAT == 20)) {
+			if (GENO_FILE.compare(default_str) != 0) {
+			    TableReader geno_reader;
+			    string message("");
+			    geno_reader.set_file_name(GENO_FILE);
+			    geno_reader.open();
+				flag1 = geno_reader.check_format(GENO_NON_DATA_ROWS, GENO_NON_DATA_COLS, REF_INDS, LOCI_G, TableReader::Format::DIPLOID_GT, message);
+				geno_reader.close();
+				if (flag1 == 1) {
 					cout << "GENO_FILE: OK." << endl;
 					foutLog << "GENO_FILE: OK." << endl;				
+				} else if (message.length() > 0) {
+                    cout << message << endl;
+                    foutLog << message << endl;
 				}
-			}else{
+			} else {
 					cout << "GENO_FILE: not specified." << endl;
 					foutLog << "GENO_FILE: not specified." << endl;
 			}
@@ -823,66 +876,107 @@ int main(int argc, char* argv[]){
 	Mat<char> RefG(REF_SIZE, LOCI_in);
 	mat refPC = zeros<mat>(REF_SIZE,DIM);
 	//========================= Read reference data ==========================
-	fin.open(GENO_FILE.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the GENO_FILE '" << GENO_FILE << "'." << endl;    
-		foutLog << "Error: cannot find the GENO_FILE '" << GENO_FILE << "'." << endl;   
-		foutLog.close();
-		gsl_rng_free(rng);	
-		return 1;
-	}
+
+    TableReader geno_reader;
+    vector<string> tokens;
+    int row = 0;
+    i = 0;
+    int ii = 0;
+
+    geno_reader.set_file_name(GENO_FILE.c_str());
+    geno_reader.open();
+
+//	fin.open(GENO_FILE.c_str());
+//	if(fin.fail()){
+//		cerr << "Error: cannot find the GENO_FILE '" << GENO_FILE << "'." << endl;
+//		foutLog << "Error: cannot find the GENO_FILE '" << GENO_FILE << "'." << endl;
+//		foutLog.close();
+//		gsl_rng_free(rng);
+//		return 1;
+//	}
  	time ( &rawtime );
   	timeinfo = localtime ( &rawtime );
   	cout << endl << asctime (timeinfo);	
 	cout << "Reading reference genotypes ..." << endl;
   	foutLog << endl << asctime (timeinfo);
 	foutLog << "Reading reference genotypes ..." << endl;
-	for(i=0; i<GENO_NON_DATA_ROWS; i++){
-		getline(fin, str);          // Read non-data rows
-	}
-	int ii = 0;
-	for(i=0; i<REF_INDS; i++){
-		if(i==Refset[ii]){
-			fin >> RefInfo1[ii] >> RefInfo2[ii];
-			for(j=2; j<GENO_NON_DATA_COLS; j++){
-				fin >> str;
-			}
-			frowvec tmpG = zeros<frowvec>(LOCI_G);
-			for(j=0; j<LOCI_G; j++){
-				fin >> tmpG(j);    // Read genotype data
-			}
-			k = 0;
-			for(j=0; j<LOCI; j++){
-				if(ExLoci(j)==0){
-					RefG(ii,k) = tmpG(cmnG(j));
-					k++;
-				}
-			}
-			getline(fin, str); // get the rest of the line
-			ii++;
-		}else{
-			getline(fin, str);
-		}
-		if(ii==REF_SIZE){
-			break;
-		}
-	}
-		
-	if(!fin.good()){
-		fin.close();
-		cerr << "Error: ifstream error occurs when reading the GENO_FILE." << endl;
-		cerr << "Run 'laser -fmt 2' to check the GENO_FILE '" << GENO_FILE << "'." << endl;
-		foutLog << "Error: ifstream error occurs when reading the GENO_FILE." << endl;
-		foutLog << "Run 'laser -fmt 2' to check the GENO_FILE '" << GENO_FILE << "'." << endl;
-		foutLog.close();
-		gsl_rng_free(rng);	
-		return 1;
-	}		
-	fin.close();
+
+    while (geno_reader.read_row(tokens, '\t') >= 0) {
+        ++row;
+        if (row <= GENO_NON_DATA_ROWS) { // skip header lines;
+            continue;
+        }
+        if (i == Refset[ii]) {
+            RefInfo1[ii] = tokens.at(0);
+            RefInfo2[ii] = tokens.at(1);
+            frowvec tmpG = zeros<frowvec>(LOCI_G);
+            for(j = 0; j < LOCI_G; ++j){
+                tmpG(j) = stof(tokens.at(GENO_NON_DATA_COLS + j));    // Read genotype data
+            }
+            k = 0;
+            for (j = 0; j < LOCI; ++j) {
+                if (ExLoci(j) == 0) {
+                    RefG(ii, k) = tmpG(cmnG(j));
+                    ++k;
+                }
+            }
+            ++ii;
+        }
+        if (ii == REF_SIZE) {
+            break;
+        }
+        ++i;
+    }
+
+    geno_reader.close();
+
+//	for(i=0; i<GENO_NON_DATA_ROWS; i++){
+//		getline(fin, str);          // Read non-data rows
+//	}
+//
+//	int ii = 0;
+//	for(i=0; i<REF_INDS; i++){
+//		if(i==Refset[ii]){
+//			fin >> RefInfo1[ii] >> RefInfo2[ii];
+//			for(j=2; j<GENO_NON_DATA_COLS; j++){
+//				fin >> str;
+//			}
+//			frowvec tmpG = zeros<frowvec>(LOCI_G);
+//			for(j=0; j<LOCI_G; j++){
+//				fin >> tmpG(j);    // Read genotype data
+//			}
+//			k = 0;
+//			for(j=0; j<LOCI; j++){
+//				if(ExLoci(j)==0){
+//					RefG(ii,k) = tmpG(cmnG(j));
+//					k++;
+//				}
+//			}
+//			getline(fin, str); // get the rest of the line
+//			ii++;
+//		}else{
+//			getline(fin, str);
+//		}
+//		if(ii==REF_SIZE){
+//			break;
+//		}
+//	}
+//
+//	if(!fin.good()){
+//		fin.close();
+//		cerr << "Error: ifstream error occurs when reading the GENO_FILE." << endl;
+//		cerr << "Run 'laser -fmt 2' to check the GENO_FILE '" << GENO_FILE << "'." << endl;
+//		foutLog << "Error: ifstream error occurs when reading the GENO_FILE." << endl;
+//		foutLog << "Run 'laser -fmt 2' to check the GENO_FILE '" << GENO_FILE << "'." << endl;
+//		foutLog.close();
+//		gsl_rng_free(rng);
+//		return 1;
+//	}
+//	fin.close();
 	//========================= Get reference coordinates  ==========================
 	time ( &rawtime );
 	timeinfo = localtime ( &rawtime );
-	if(COORD_FILE.compare(default_str)!=0 && PCA_MODE==0){		
+	if(COORD_FILE.compare(default_str)!=0 && PCA_MODE==0){
 		fin.open(COORD_FILE.c_str());
 		if(fin.fail()){
 			cerr << "Error: cannot find the COORD_FILE '" << COORD_FILE << "'." << endl;
@@ -2026,84 +2120,7 @@ int check_coverage(int output, int first_ind, int last_ind, uvec cmnS, urowvec &
 
 	return 1;
 }
-//################# Function to check the GENO_FILE format  ##################
-int check_format_geno(string filename, int inds, int loci){
-	string str;
-	int nrow = 0;
-	int ncol = 0;
-	ifstream fin;
-	fin.open(filename.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the GENO_FILE '" << filename << "'." << endl;    
-		foutLog << "Error: cannot find the GENO_FILE '" << filename << "'." << endl;   
-		return 0;
-	}
-	//==========================================================		
-	while(nrow < GENO_NON_DATA_ROWS){
-		getline(fin, str);     // Read in non-data rows
-		nrow+=1;
-	}
-	while(!fin.eof()){
-		getline(fin, str);
-		if(str.length()>0 && str!=" "){
-			nrow+=1;
-			ncol=0;
-			bool tab=true;    //Previous character is a tab
-			for(int i=0; i<str.length(); i++){
-				bool missing=false;     
-				if(str[i]!='\t' && i==0){        //Read in the first element
-					ncol+=1;
-					tab=false;
-				}else if(str[i]!='\t' && i>0 && tab){
-					ncol+=1;
-					tab=false;
-					if(ncol>GENO_NON_DATA_COLS && (str[i]!='0' && str[i]!='1'&& str[i]!='2')){
-						if(i<(str.length()-2)){
-							if(str[i]=='-'&&str[i+1]=='9'&&str[i+2]=='\t'){
-								missing = true;
-							}
-						}else if(i==(str.length()-2)){
-							if(str[i]=='-'&&str[i+1]=='9'){
-								missing = true;
-							}
-						}
-						if(missing == false){
-							cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the GENO_FILE."<<endl;
-							foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the GENO_FILE."<<endl;
-							fin.close();
-							return 0;
-						}
-					}
-				}else if(str[i]!='\t' && i>0 && !tab){
-					if(ncol>GENO_NON_DATA_COLS){
-						if(str[i-1]!='-' || str[i]!='9'){
-							cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the GENO_FILE."<<endl;
-							foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the GENO_FILE."<<endl;
-							fin.close();
-							return 0;
-						}
-					}
-				}else if(str[i]=='\t'){
-					tab=true;
-				}
-			}
-			if(ncol!=(loci+GENO_NON_DATA_COLS)){
-				cerr << "Error: incorrect number of loci in row " << nrow << " in the GENO_FILE." <<endl;
-				foutLog << "Error: incorrect number of loci in row "<< nrow << " in the GENO_FILE." <<endl;
-				fin.close();
-				return 0;
-			}
-		}
-	}
-	if(nrow!=(inds+GENO_NON_DATA_ROWS)){
-		cerr << "Error: incorrect number of individuals in the GENO_FILE." << endl;
-		foutLog << "Error: incorrect number of individuals in the GENO_FILE." << endl;
-		fin.close();
-		return 0;
-	}
-	fin.close();
-	return 1;
-}
+
 //################# Function to check the SEQ_FILE format  ##################
 int check_format_seq(string filename, int inds, int loci){
 	string str;

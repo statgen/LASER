@@ -7,9 +7,11 @@
 
 #include <iostream>
 #include <string>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 #include <tuple>
+#include <cmath>
 #include <zlib.h>
 
 using namespace std;
@@ -24,6 +26,8 @@ private:
     gzFile gzfile;
 
 public:
+    enum Format { DIPLOID_GT, NPLOID_GT, FLOAT };
+
     static const unsigned int DEFAULT_BUFFER_SIZE;
 
     TableReader(unsigned int buffer_size = DEFAULT_BUFFER_SIZE) noexcept(false);
@@ -40,6 +44,7 @@ public:
 
     void get_dim(int &nrow, int &ncol, char separator) noexcept(false);
     long int read_row(vector<string>& tokens, char separator) noexcept(false);
+    int check_format(int header_rows, int index_columns, int required_data_rows, int required_data_cols,  Format format, string& message) noexcept(false);
 };
 
 

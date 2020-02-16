@@ -17,7 +17,6 @@
 */
 
 #include "Version.h"
-
 #include "aux.h"
 #include "TableReader.h"
 #include <iostream>
@@ -131,8 +130,6 @@ int normalize(fmat &G, fmat &Gm, fmat &Gsd);
 int pca_cov(mat &M, int nPCs, mat &PC, rowvec &PCvar);
 int procrustes(mat &X, mat &Y, mat &Xnew, double &t, double &rho, mat &A, rowvec &b, int ps);
 double pprocrustes(mat &X, mat &Y, mat &Xnew, double &t, double &rho, mat &A, rowvec &b, int iter, double eps, int ps);
-int check_format_geno(string filename, int inds, int loci);
-int check_format_coord(string filename, int inds, int npcs);
 
 ofstream foutLog;
 
@@ -273,15 +270,15 @@ int main(int argc, char* argv[]){
 	gsl_rng_set(rng, RANDOM_SEED);
 	
 	//================================================================================
-	if(EXCLUDE_LIST.compare(default_str) != 0){
+	if (EXCLUDE_LIST.compare(default_str) != 0) {
 		fin.open(EXCLUDE_LIST.c_str());
-		if(fin.fail()){
+		if (fin.fail()) {
 			cerr << "Error: cannot open the file '" << EXCLUDE_LIST << "'." << endl;    
 			foutLog << "Error: cannot open the file '" << EXCLUDE_LIST << "'." << endl;   
 			foutLog.close();
 			return 1;
-		}else{
-			while(!fin.eof()){
+		} else {
+			while (!fin.eof()) {
 				fin >> str;
 				if(str.length()>0 && str!=" "){
 					exSNP[str] = 1;
@@ -291,37 +288,36 @@ int main(int argc, char* argv[]){
 		}
 	}
 
-	if (STUDY_FILE.compare(default_str) != 0 && flag == 1) {
-        TableReader reader;
+	if ((STUDY_FILE.compare(default_str) != 0) && (flag == 1)) {
+        TableReader geno_reader;
+        TableReader sites_reader;
+        LOCI_S = 0;
+        STUDY_SITE_FILE = build_sites_filename(STUDY_FILE);
+        vector<string> tokens;
+        string message("");
 
-        reader.set_file_name(STUDY_FILE);
-        reader.open();
-        reader.get_dim(nrow, ncol, '\t');
-        reader.close();
-
-		INDS = nrow - STUDY_NON_DATA_ROWS;
+        geno_reader.set_file_name(STUDY_FILE);
+        geno_reader.open();
+        geno_reader.get_dim(nrow, ncol, '\t');
+        INDS = nrow - STUDY_NON_DATA_ROWS;
 		int tmpLOCI = ncol - STUDY_NON_DATA_COLS;
 		cout << INDS << " individuals are detected in the STUDY_FILE." << endl;  
 		foutLog << INDS << " individuals are detected in the STUDY_FILE." << endl; 
-		if(INDS < 0){
+		if (INDS < 0) {
 			cerr << "Error: Invalid number of rows in '" << STUDY_FILE << "'." << endl;
 			foutLog << "Error: Invalid number of rows in '" << STUDY_FILE << "'." << endl;
 			flag = 0;
 		}
-		if(tmpLOCI < 0){
+		if (tmpLOCI < 0) {
 			cerr << "Error: Invalid number of columns in the STUDY_FILE '" << STUDY_FILE << "'." << endl;
 			foutLog << "Error: Invalid number of columns in the STUDY_FILE '" << STUDY_FILE << "'." << endl;
 			flag = 0;
 		}
 
-        LOCI_S = 0;
-
-		STUDY_SITE_FILE = build_sites_filename(STUDY_FILE);
-		vector<string> tokens;
-		reader.set_file_name(STUDY_SITE_FILE);
-		reader.open();
-        reader.read_row(tokens, '\t'); //skip header
-		while (reader.read_row(tokens, '\t') >= 0) {
+        sites_reader.set_file_name(STUDY_SITE_FILE);
+        sites_reader.open();
+        sites_reader.read_row(tokens, '\t'); //skip header
+		while (sites_reader.read_row(tokens, '\t') >= 0) {
 		    if (tokens.size() != 5) {
                 cerr << "Error: incorrect number of columns in '" << STUDY_SITE_FILE << "'." << endl;
                 foutLog << "Error: incorrect number of columns in '" << STUDY_SITE_FILE << "'." << endl;
@@ -334,19 +330,24 @@ int main(int argc, char* argv[]){
             alleleS[variant_name] = variant_alleles;
             LOCI_S++;
 		}
-		reader.close();
+        sites_reader.close();
 
 		cout << LOCI_S << " loci are detected in the STUDY_FILE." << endl; 
 		foutLog << LOCI_S << " loci are detected in the STUDY_FILE." << endl;
-		if(tmpLOCI < 0 || tmpLOCI != LOCI_S){
+		if ((tmpLOCI < 0) || (tmpLOCI != LOCI_S)) {
 			cerr << "Error: Number of loci doesn't match in '" << STUDY_SITE_FILE << "' and '" << STUDY_FILE << "'." << endl;
 			foutLog << "Error: Number of loci doesn't match in '" << STUDY_SITE_FILE << "' and '" << STUDY_FILE << "'." << endl;
 			flag = 0;
 		}
-		if(flag == 1){
-			flag = check_format_geno(STUDY_FILE, INDS, LOCI_S);
+		if (flag == 1) {
+            flag = geno_reader.check_format(GENO_NON_DATA_ROWS, GENO_NON_DATA_COLS, INDS, LOCI_S, TableReader::Format::NPLOID_GT, message);
+            if (message.length() > 0) {
+                cout << message << endl;
+                foutLog << message << endl;
+            }
 		}
-	}else{
+        geno_reader.close();
+	} else {
 		cerr << "Error: STUDY_FILE (-s) is not specified." << endl;
 		foutLog << "Error: STUDY_FILE (-s) is not specified." << endl;
 		foutLog.close();
@@ -354,13 +355,17 @@ int main(int argc, char* argv[]){
 	}
 	
 	if(GENO_FILE.compare(default_str) != 0 && flag == 1){
-	    TableReader reader;
+	    TableReader geno_reader;
+        TableReader sites_reader;
+        LOCI_G = 0;
+        LOCI = 0;
+        GENO_SITE_FILE = build_sites_filename(GENO_FILE);
+        vector<string> tokens;
+        string message("");
 
-	    reader.set_file_name(GENO_FILE);
-	    reader.open();
-	    reader.get_dim(nrow, ncol, '\t');
-	    reader.close();
-
+        geno_reader.set_file_name(GENO_FILE);
+        geno_reader.open();
+        geno_reader.get_dim(nrow, ncol, '\t');
 		REF_INDS = nrow - GENO_NON_DATA_ROWS;
 		int tmpLOCI = ncol - GENO_NON_DATA_COLS;
 		cout << REF_INDS << " individuals are detected in the GENO_FILE." << endl; 
@@ -376,16 +381,10 @@ int main(int argc, char* argv[]){
 			flag = 0;
 		}
 
-        GENO_SITE_FILE = build_sites_filename(GENO_FILE);
-        vector<string> tokens;
-		reader.set_file_name(GENO_SITE_FILE);
-		reader.open();
-
-		LOCI_G = 0;
-		LOCI = 0;
-
-		reader.read_row(tokens, '\t'); //skip header TODO: check if header = CHR\tPOS\tID\tREF\tALT
-		while (reader.read_row(tokens, '\t') >= 0) {
+        sites_reader.set_file_name(GENO_SITE_FILE);
+        sites_reader.open();
+        sites_reader.read_row(tokens, '\t'); //skip header TODO: check if header = CHR\tPOS\tID\tREF\tALT
+		while (sites_reader.read_row(tokens, '\t') >= 0) {
 		    if (tokens.size() != 5) {
                 cerr << "Error: incorrect number of columns in '" << GENO_SITE_FILE << "'." << endl;
                 foutLog << "Error: incorrect number of columns in '" << GENO_SITE_FILE << "'." << endl;
@@ -412,7 +411,7 @@ int main(int argc, char* argv[]){
                 }
             }
 		}
-		reader.close();
+        sites_reader.close();
 
 		cout << LOCI_G << " loci are detected in the GENO_FILE." << endl; 
 		foutLog << LOCI_G << " loci are detected in the GENO_FILE." << endl;
@@ -434,10 +433,15 @@ int main(int argc, char* argv[]){
 			alleleG.clear();
 			alleleS.clear();
 		}
-		if(flag == 1){
-			flag = check_format_geno(GENO_FILE, REF_INDS, LOCI_G);
+		if (flag == 1) {
+            flag = geno_reader.check_format(GENO_NON_DATA_ROWS, GENO_NON_DATA_COLS, REF_INDS, LOCI_G, TableReader::Format::NPLOID_GT, message);
+            if (message.length() > 0) {
+                cout << message << endl;
+                foutLog << message << endl;
+            }
 		}
-	}else{
+        geno_reader.close();
+	} else {
 		cerr << "Error: GENO_FILE (-g) is not specified." << endl;
 		foutLog << "Error: GENO_FILE (-g) is not specified." << endl;
 		foutLog.close();
@@ -446,14 +450,12 @@ int main(int argc, char* argv[]){
 	}
 
 	if(COORD_FILE.compare(default_str) != 0 && GENO_FILE.compare(default_str) != 0 && flag == 1){
+	    TableReader coord_reader;
+        string message("");
 
-	    TableReader reader;
-
-	    reader.set_file_name(COORD_FILE);
-	    reader.open();
-	    reader.get_dim(nrow, ncol, '\t');
-	    reader.close();
-
+        coord_reader.set_file_name(COORD_FILE);
+        coord_reader.open();
+        coord_reader.get_dim(nrow, ncol, '\t');
 		int tmpINDS = nrow - COORD_NON_DATA_ROWS;
 		NUM_PCS = ncol - COORD_NON_DATA_COLS;
 		cout << tmpINDS << " individuals are detected in the COORD_FILE." << endl;
@@ -475,8 +477,13 @@ int main(int argc, char* argv[]){
 			flag = 0;
 		}
 		if (flag == 1) {
-			flag = check_format_coord(COORD_FILE, REF_INDS, NUM_PCS);
+            flag = coord_reader.check_format(COORD_NON_DATA_ROWS, COORD_NON_DATA_COLS, REF_INDS, NUM_PCS, TableReader::Format::FLOAT, message);
+            if (message.length() > 0) {
+                cout << message << endl;
+                foutLog << message << endl;
+            }
 		}
+        coord_reader.close();
 	}	
 	if(flag == 0){
 		foutLog.close();
@@ -1203,104 +1210,6 @@ double pprocrustes(mat &X, mat &Y, mat &Xnew, double &t, double &rho, mat &A, ro
 		procrustes(X2, Y, Xnew2, t, rho2, A2, b2, ps);
 		return epsilon; 
 	}
-}
-
-//################# Function to check the STUDY_FILE format  ##################
-// Allowing arbitrary poidy (i.e. genotypes are coded as 0, 1, 2, ..., p for a p-ploidy organism, -9 represents missing data)
-int check_format_geno(string filename, int inds, int loci) {
-    vector<string> tokens;
-    int nrow = 0;
-
-    TableReader reader;
-    reader.set_file_name(filename);
-    reader.open();
-
-    while (reader.read_row(tokens, '\t') >= 0) {
-        ++nrow;
-        if (nrow <= GENO_NON_DATA_ROWS) { // Skip non-data rows
-            continue;
-        }
-        if (tokens.size() != loci + GENO_NON_DATA_COLS) {
-            cerr << "Error: incorrect number of loci in row " << nrow <<" in '" << filename << "'."<<endl;
-            foutLog << "Error: incorrect number of loci in row "<< nrow <<" in '" << filename << "'."<<endl;
-            return 0; // incorrect number of columns or empty row
-        }
-        for (unsigned int i = GENO_NON_DATA_COLS; i < tokens.size(); ++i) {
-            if (tokens[i].length() == 0) {
-                cerr << "Error: empty field at (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
-                foutLog << "Error: empty field at (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
-                return 0;
-            } else {
-                if (tokens[i].compare("-9") != 0) {
-                    if (tokens[i].find_first_not_of("0123456789") != string::npos) {
-                        cerr << "Error: invalid value in (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
-                        foutLog << "Error: invalid value in (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
-                        return 0; // incorrect column value;
-                    }
-                }
-            }
-        }
-    }
-
-    if (nrow != (inds + GENO_NON_DATA_ROWS)) {
-        cerr << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
-        foutLog << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
-        return 0;
-    }
-
-    reader.close();
-	return 1;
-}
-
-//################# Function to check the COORD_FILE format  ##################
-int check_format_coord(string filename, int inds, int npcs) {
-    vector<string> tokens;
-    int nrow = 0;
-    size_t pos = 0;
-    float value = 0;
-
-    TableReader reader;
-    reader.set_file_name(filename);
-    reader.open();
-
-    while (reader.read_row(tokens, '\t') >= 0) {
-        ++nrow;
-        if (nrow <= COORD_NON_DATA_ROWS) {
-            continue;
-        }
-        if (tokens.size() != npcs + COORD_NON_DATA_COLS) {
-            cerr << "Error: incorrect number of PCs in row " << nrow << " in the file '" << filename << "'."<<endl;
-            foutLog << "Error: incorrect number of PCs in row " << nrow << " in the file '" << filename << "'."<<endl;
-            return 0; // incorrect number of columns or empty row
-        }
-        for (unsigned int i = COORD_NON_DATA_COLS; i < tokens.size(); ++i) {
-            if (tokens[i].length() == 0) {
-                cerr << "Error: no value at (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
-                foutLog << "Error: no value at (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
-                return 0;
-            } else {
-                try {
-                    value = stof(tokens[i], &pos);
-                    if ((pos != tokens[i].length()) || (isinf(value))) {
-                        throw runtime_error("");
-                    }
-                } catch (...) {
-                    cerr << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
-                    foutLog << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << filename << "'." << endl;
-                    return 0;
-                }
-            }
-        }
-    }
-
-  	if(nrow != (inds + COORD_NON_DATA_ROWS)) {
-		cerr << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
-		foutLog << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
-		return 0;
-	}
-
-    reader.close();
-	return 1;
 }
 
 //################# Function to create an empty paramfile  ##################

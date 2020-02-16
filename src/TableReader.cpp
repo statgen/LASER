@@ -145,3 +145,74 @@ long int TableReader::read_row(vector<string>& tokens, char separator) noexcept(
 
     return (i == 0 ? -1 : i);
 }
+
+int TableReader::check_format(int header_rows, int index_columns, int required_data_rows, int required_data_cols,  Format format, string& message) noexcept(false) {
+    this->reset();
+    stringstream fmt_message;
+    vector<string> tokens;
+    int nrow = 0;
+    size_t pos = 0;
+    float value = 0;
+
+    while (this->read_row(tokens, '\t') >= 0) {
+        ++nrow;
+        if (nrow <= header_rows) { // Skip non-data rows
+            continue;
+        }
+        if (tokens.size() != required_data_cols + index_columns) {
+            fmt_message << "Error: incorrect number of columns in row " << nrow << " in '" << this->file_name << "'." << endl;
+            message = fmt_message.str();
+            return 0; // incorrect number of columns or empty row
+        }
+        for (unsigned int i = index_columns; i < tokens.size(); ++i) {
+            if (tokens[i].length() == 0) {
+                fmt_message << "Error: empty field at (row " << nrow << ", column " << i << ") in the file '" << this->file_name << "'." << endl;
+                message = fmt_message.str();
+                return 0;
+            } else {
+                switch (format) {
+                    case Format::DIPLOID_GT:
+                        if (tokens[i].compare("-9") != 0) {
+                            if ((tokens[i].compare("0") != 0) && (tokens[i].compare("1") != 0) && (tokens[i].compare("2") != 0)) {
+                                fmt_message << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << this->file_name << "'." << endl;
+                                message = fmt_message.str();
+                                return 0; // incorrect column value;
+                            }
+                        }
+                        break;
+                    case Format::NPLOID_GT:
+                        if (tokens[i].compare("-9") != 0) {
+                            if (tokens[i].find_first_not_of("0123456789") != string::npos) {
+                                fmt_message << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << this->file_name << "'." << endl;
+                                message = fmt_message.str();
+                                return 0; // incorrect column value;
+                            }
+                        }
+                        break;
+                    case Format::FLOAT:
+                        try {
+                            value = stof(tokens[i], &pos);
+                            if ((pos != tokens[i].length()) || (isinf(value))) {
+                                throw runtime_error("");
+                            }
+                        } catch (...) {
+                            fmt_message << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << this->file_name << "'." << endl;
+                            message = fmt_message.str();
+                            return 0;
+                        }
+                        break;
+                }
+            }
+        }
+    }
+
+    if (nrow != (required_data_rows + header_rows)) {
+        fmt_message << "Error: incorrect number of rows in the file '" << this->file_name << "'." << endl;
+        message = fmt_message.str();
+        return 0;
+    }
+
+    this->reset();
+    message = "";
+    return 1;
+}

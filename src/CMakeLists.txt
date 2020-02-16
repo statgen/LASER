@@ -31,12 +31,13 @@ message(STATUS "gfortran = ${GFORTRAN_LIB}")
 message(STATUS "OpenBLAS = ${OPENBLAS_LIB}")
 message(STATUS "GSL = ${GSL_LIB}")
 
-add_executable(laser laser.cpp)
+set(LASER_SOURCE_FILES laser.cpp aux.cpp aux.h TableReader.cpp TableReader.h)
+add_executable(laser ${LASER_SOURCE_FILES})
 target_include_directories(laser PUBLIC "${PROJECT_BINARY_DIR}")
 target_link_libraries(laser OpenMP::OpenMP_CXX ${Z_LIB} ${GSL_LIB} ${OPENBLAS_LIB} ${GFORTRAN_LIB} Threads::Threads)
 
-set(SOURCE_FILES trace.cpp aux.cpp aux.h TableReader.cpp TableReader.h)
-add_executable(trace ${SOURCE_FILES})
+set(TRACE_SOURCE_FILES trace.cpp aux.cpp aux.h TableReader.cpp TableReader.h)
+add_executable(trace ${TRACE_SOURCE_FILES})
 target_include_directories(trace PUBLIC "${PROJECT_BINARY_DIR}")
 target_link_libraries(trace OpenMP::OpenMP_CXX ${Z_LIB} ${GSL_LIB} ${OPENBLAS_LIB} ${GFORTRAN_LIB} Threads::Threads)
 
