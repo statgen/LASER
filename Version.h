@@ -1,4 +1,0 @@
-#define LASER_VERSION "2.4"
-#define LASER_VERSION_MAJOR "2"
-#define LASER_VERSION_MINOR "4"
-#define LAST_MODIFIED "Feb/20/2020"
