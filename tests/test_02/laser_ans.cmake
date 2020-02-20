@@ -3,4 +3,7 @@ if(laser_exit_code)
    message(FATAL_ERROR "LASER failed.")
 endif()
 
-
+execute_process(COMMAND ${TESTLASER} compare_tables good/test_laser.SeqPC.coord test_laser.SeqPC.coord ssdfdffff 0.001 RESULT_VARIABLE test_exit_code)
+if(test_exit_code)
+   message(FATAL_ERROR "LASER didn't replicate results.")
+endif()

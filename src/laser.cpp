@@ -165,7 +165,6 @@ int simuseq2(Mat<char> &G, urowvec &C, uvec &Loc, frowvec &Q, fmat &S, gsl_rng *
 
 int check_coverage(int output, int first_ind, int last_ind, uvec cmnS, urowvec &ExLoci, int &Ls, int &Lg);
 int check_format_seq(string filename, int inds, int loci);
-int check_format_coord(string filename, int inds, int npcs);
 bool get_table_dim(int &nrow, int &ncol, string filename, char separator);
 
 ofstream foutLog;
@@ -549,12 +548,17 @@ int main(int argc, char* argv[]){
 	}
 	
 	if(COORD_FILE.compare(default_str) != 0 && GENO_FILE.compare(default_str) != 0 && flag == 1){
-		if(!get_table_dim(nrow, ncol, COORD_FILE, '\t')){
-			cerr << "Error: cannot open the COORD_FILE '" << COORD_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the COORD_FILE '" << COORD_FILE << "'." << endl; 
-			foutLog.close();
-			return 1;
-		}	
+        TableReader coord_reader;
+
+//	    if(!get_table_dim(nrow, ncol, COORD_FILE, '\t')){
+//			cerr << "Error: cannot open the COORD_FILE '" << COORD_FILE << "'." << endl;
+//			foutLog << "Error: cannot open the COORD_FILE '" << COORD_FILE << "'." << endl;
+//			foutLog.close();
+//			return 1;
+//		}
+        coord_reader.set_file_name(COORD_FILE);
+        coord_reader.open();
+        coord_reader.get_dim(nrow, ncol, '\t');
 		int tmpINDS = nrow - COORD_NON_DATA_ROWS;
 		NUM_PCS = ncol - COORD_NON_DATA_COLS;
 		cout << tmpINDS << " individuals in the COORD_FILE." << endl;
@@ -576,7 +580,8 @@ int main(int argc, char* argv[]){
 			cerr << "Error: Invalid number of columns in the COORD_FILE " << COORD_FILE << "." << endl;
 			foutLog << "Error: Invalid number of columns in the COORD_FILE " << COORD_FILE << "." << endl;
 			flag = 0;
-		}	
+		}
+		coord_reader.close();
 	}
 	if(flag == 0){
 		foutLog.close();
@@ -675,16 +680,24 @@ int main(int argc, char* argv[]){
 					foutLog << "SEQ_FILE: not specified." << endl;
 			}
 		}
-		if(CHECK_FORMAT==1 || CHECK_FORMAT==4 || CHECK_FORMAT==10 || CHECK_FORMAT==40){
-			if(COORD_FILE.compare(default_str)!=0){
-				flag3 = check_format_coord(COORD_FILE, REF_INDS, NUM_PCS);
-				if(flag3==1){
+		if ((CHECK_FORMAT == 1) || (CHECK_FORMAT == 4) || (CHECK_FORMAT == 10) || (CHECK_FORMAT == 40)) {
+			if (COORD_FILE.compare(default_str) != 0) {
+			    TableReader coord_reader;
+			    string message("");
+			    coord_reader.set_file_name(COORD_FILE);
+			    coord_reader.open();
+                flag3 = coord_reader.check_format(COORD_NON_DATA_ROWS, COORD_NON_DATA_COLS, REF_INDS, NUM_PCS, TableReader::Format::FLOAT, message);
+				coord_reader.close();
+				if (flag3 == 1) {
 					cout << "COORD_FILE: OK." << endl;
 					foutLog << "COORD_FILE: OK." << endl;
+				} else {
+                    cout << message << endl;
+                    foutLog << message << endl;
 				}
-			}else{
-					cout << "COORD_FILE: not specified." << endl;
-					foutLog << "COORD_FILE: not specified." << endl;
+			} else {
+			    cout << "COORD_FILE: not specified." << endl;
+			    foutLog << "COORD_FILE: not specified." << endl;
 			}
 		}
 		if(flag1==0 || flag2==0 || flag3==0){
@@ -2200,84 +2213,7 @@ int check_format_seq(string filename, int inds, int loci){
 	fin.close();
 	return 1;
 }
-//################# Function to check the COORD_FILE format  ##################
-int check_format_coord(string filename, int inds, int npcs){
-	string str;
-	int nrow = 0;
-	int ncol = 0;
-	ifstream fin;
-	fin.open(filename.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the file '" << COORD_FILE << "'." << endl;    
-		foutLog << "Error: cannot find the file '" << COORD_FILE << "'." << endl;   
-		return 0;
-	}
-	//==========================================================	
-	while(nrow < COORD_NON_DATA_ROWS){
-		getline(fin, str);     // Read in non-data rows
-		nrow+=1;
-	}
-	while(!fin.eof()){
-		getline(fin, str);
-		if(str.length()>0 && str!=" "){
-			nrow+=1;
-			ncol=0;
-			bool tab=true;   //Previous character is a tab
-			bool dot=false;    // A dot has been found after the last space 
-			bool dash=false;
-			bool exp=false;
-			for(int i=0; i<str.length(); i++){    
-				if(str[i]!='\t' && i==0){        //Read in the first element
-					ncol+=1;
-					tab=false;
-				}else if(str[i]!='\t' && i>0 && tab){
-					ncol+=1;
-					tab=false;
-					if(ncol>COORD_NON_DATA_COLS && (str[i]<'0' || str[i]>'9') && str[i]!='-'){
-						cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<< ") in the file '" << filename << "'."<<endl;
-						foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<< ") in the file '" << filename << "'."<<endl;
-						fin.close();
-						return 0;
-					}
-				}else if(str[i]!='\t' && i>0 && !tab){
-					if(ncol>COORD_NON_DATA_COLS && (str[i]<'0' || str[i]>'9')){
-						if(str[i]=='.' && dot==false){
-							dot=true;
-						}else if(str[i]=='-' && (str[i-1]=='e' || str[i-1]=='E') && dash==false){
-							dash=true;
-						}else if(str[i]=='e' || str[i]=='E' && exp==false){
-							exp=true;
-						}else{
-							cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<< ") in the file '" << filename << "'."<<endl;
-							foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<< ") in the file '" << filename << "'."<<endl;
-							fin.close();
-							return 0;
-						}
-					}
-				}else if(str[i]=='\t'){
-					tab=true;
-					dot=false;
-					dash=false;
-					exp=false;
-				}
-			}
-			if(ncol!=(npcs+COORD_NON_DATA_COLS)){
-				cerr << "Error: incorrect number of PCs in row " << nrow << ") in the file '" << filename << "'."<<endl;
-				foutLog << "Error: incorrect number of PCs in row " << nrow << ") in the file '" << filename << "'."<<endl;
-				fin.close();
-				return 0;
-			}
-		}
-	}
-	if(nrow!=(inds+COORD_NON_DATA_ROWS)){
-		cerr << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
-		foutLog << "Error: incorrect number of individuals in the file '" << filename << "'." << endl;
-		fin.close();
-		return 0;
-	}
-	fin.close();
-	return 1;
-}
+
 //################# Function to create an empty paramfile  ##################
 int create_paramfile(string filename){
 	ofstream fout;
