@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(LASER VERSION 2.04)
 
-set(LAST_MODIFIED "Feb/13/2020")
+set(LAST_MODIFIED "Feb/22/2020")
 
 configure_file(Version.h.in Version.h)
 

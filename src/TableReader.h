@@ -26,7 +26,7 @@ private:
     gzFile gzfile;
 
 public:
-    enum Format { DIPLOID_GT, NPLOID_GT, FLOAT };
+    enum Format { DIPLOID_GT, NPLOID_GT, FLOAT, SEQ };
 
     static const unsigned int DEFAULT_BUFFER_SIZE;
 

@@ -151,7 +151,7 @@ int TableReader::check_format(int header_rows, int index_columns, int required_d
     stringstream fmt_message;
     vector<string> tokens;
     int nrow = 0;
-    size_t pos = 0;
+    size_t n_values, pos_start, pos = 0;
     float value = 0;
 
     while (this->read_row(tokens, '\t') >= 0) {
@@ -196,6 +196,29 @@ int TableReader::check_format(int header_rows, int index_columns, int required_d
                                 throw runtime_error("");
                             }
                         } catch (...) {
+                            fmt_message << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << this->file_name << "'." << endl;
+                            message = fmt_message.str();
+                            return 0;
+                        }
+                        break;
+                    case Format::SEQ:
+                        n_values = pos_start = pos = 0;
+                        while (n_values <= 3) {
+                            ++n_values;
+                            pos = tokens[i].find_first_not_of("0123456789", pos_start);
+                            if (pos != string::npos) {
+                                if ((tokens[i][pos] != ' ') || (pos - pos_start <= 0)) {
+                                    fmt_message << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << this->file_name << "'." << endl;
+                                    message = fmt_message.str();
+                                    return 0;
+                                } else {
+                                    pos_start = pos + 1;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        if (n_values > 3) {
                             fmt_message << "Error: invalid value '" << tokens[i] << "' in (row " << nrow << ", column " << i << ") in the file '" << this->file_name << "'." << endl;
                             message = fmt_message.str();
                             return 0;

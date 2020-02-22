@@ -164,8 +164,6 @@ int simuseq(Mat<char> &G, urowvec &C, uvec &Loc, double e, fmat &S, gsl_rng *rng
 int simuseq2(Mat<char> &G, urowvec &C, uvec &Loc, frowvec &Q, fmat &S, gsl_rng *rng);
 
 int check_coverage(int output, int first_ind, int last_ind, uvec cmnS, urowvec &ExLoci, int &Ls, int &Lg);
-int check_format_seq(string filename, int inds, int loci);
-bool get_table_dim(int &nrow, int &ncol, string filename, char separator);
 
 ofstream foutLog;
 //=========================================================================================================
@@ -330,93 +328,71 @@ int main(int argc, char* argv[]){
 	// long seed = time(NULL)*getpid();
 	gsl_rng_set(rng, RANDOM_SEED);
 	
-	if(SEQ_FILE.compare(default_str) != 0 && flag == 1){
-		if(!get_table_dim(nrow, ncol, SEQ_FILE, '\t')){
-			cerr << "Error: cannot open the SEQ_FILE '" << SEQ_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the SEQ_FILE '" << SEQ_FILE << "'." << endl; 
-			foutLog.close();	
-			return 1;
-		}	
+	if ((SEQ_FILE.compare(default_str) != 0) && (flag == 1)) {
+	    TableReader reader;
+        reader.set_file_name(SEQ_FILE);
+        reader.open();
+        reader.get_dim(nrow, ncol, '\t');
+        reader.close();
 		SEQ_INDS = nrow - SEQ_NON_DATA_ROWS;
 		int tmpLOCI = ncol - SEQ_NON_DATA_COLS;
 		cout << SEQ_INDS << " individuals in the SEQ_FILE." << endl;
 		foutLog << SEQ_INDS << " individuals in the SEQ_FILE." << endl;
-		if(SEQ_INDS < 0){
+		if (SEQ_INDS < 0) {
 			cerr << "Error: Invalid number of rows in the SEQ_FILE '" << SEQ_FILE << "'." << endl;
 			foutLog << "Error: Invalid number of rows in the SEQ_FILE '" << SEQ_FILE << "'." << endl;
 			flag = 0;
 		}
-		if(tmpLOCI < 0){
+		if (tmpLOCI < 0) {
 			cerr << "Error: Invalid number of columns in the SEQ_FILE '" << SEQ_FILE << "'." << endl;
 			foutLog << "Error: Invalid number of columns in the SEQ_FILE '" << SEQ_FILE << "'." << endl;
 			flag = 0;
-		}		
-		SEQ_SITE_FILE = SEQ_FILE;
-		SEQ_SITE_FILE.replace(SEQ_SITE_FILE.length()-4, 5, ".site");
-		fin.open(SEQ_SITE_FILE.c_str());
-		if(fin.fail()){
-			cerr << "Error: cannot open the file '" << SEQ_SITE_FILE << "'." << endl;    
-			foutLog << "Error: cannot open the file '" << SEQ_SITE_FILE << "'." << endl;   
-			foutLog.close();
-			return 1;
-		}else{
-			getline(fin, str);
-			LOCI_S = 0;
-			while(!fin.eof()){
-				getline(fin, str);
-				if(str.length()>0 && str!=" "){
-					j=0;
-					int tabpos[5];
-					for(i=0; i<str.length(); i++){
-						if(str[i]=='\t' && j<5){
-							tabpos[j] = i;
-							j++;
-						}
-					}
-					str[tabpos[0]] = ':';
-					str[tabpos[3]] = ',';
-					string allele = str.substr(tabpos[2]+1,i-tabpos[2]-1);
-					str.resize(tabpos[1]);
-					idxS[str] = LOCI_S;
-					alleleS[str] = allele;
-					LOCI_S++;
-				}
-			}
-			fin.close();
 		}
-		cout << LOCI_S << " loci in the SEQ_FILE." << endl; 
-		foutLog << LOCI_S << " loci in the SEQ_FILE." << endl; 		
-		if(tmpLOCI < 0 || tmpLOCI != LOCI_S){
+        SEQ_SITE_FILE = build_sites_filename(SEQ_FILE);
+        vector<string> tokens;
+        reader.set_file_name(SEQ_SITE_FILE);
+        reader.open();
+        LOCI_S = 0;
+        reader.read_row(tokens, '\t'); //skip header TODO: check if header = CHR\tPOS\tID\tREF\tALT
+        while (reader.read_row(tokens, '\t') >= 0) {
+            if (tokens.size() != 5) {
+                cerr << "Error: incorrect number of columns in '" << SEQ_SITE_FILE << "'." << endl;
+                foutLog << "Error: incorrect number of columns in '" << SEQ_SITE_FILE << "'." << endl;
+                foutLog.close();
+                return 1;
+            }
+            string variant_name = tokens.at(0) + ":" + tokens.at(1);
+            string variant_alleles = tokens.at(3) + "," + tokens.at(4);
+            idxS[variant_name] = LOCI_S;
+            alleleS[variant_name] = variant_alleles;
+            ++LOCI_S;
+        }
+        reader.close();
+		cout << LOCI_S << " loci in the SEQ_FILE." << endl;
+		foutLog << LOCI_S << " loci in the SEQ_FILE." << endl;
+		if ((tmpLOCI < 0) || (tmpLOCI != LOCI_S)) {
 			cerr << "Error: Number of loci doesn't match in '" << SEQ_SITE_FILE << "' and '" << SEQ_FILE << "'." << endl;
 			foutLog << "Error: Number of loci doesn't match in '" << SEQ_SITE_FILE << "' and '" << SEQ_FILE << "'." << endl;
 			flag = 0;
 		}
-	}		
+	}
 
-	if(GENO_FILE.compare(default_str) != 0 && flag == 1){
+	if ((GENO_FILE.compare(default_str) != 0) && (flag == 1)) {
         TableReader reader;
-
         reader.set_file_name(GENO_FILE);
         reader.open();
         reader.get_dim(nrow, ncol, '\t');
         reader.close();
-
-//		if(!get_table_dim(nrow, ncol, GENO_FILE, '\t')){
-//			cerr << "Error: cannot open the file '" << GENO_FILE << "'." << endl;
-//			foutLog << "Error: cannot open the file '" << GENO_FILE << "'." << endl;
-//			foutLog.close();
-//			return 1;
-//		}
-		REF_INDS = nrow - GENO_NON_DATA_ROWS;
+        REF_INDS = nrow - GENO_NON_DATA_ROWS;
 		int tmpLOCI = ncol - GENO_NON_DATA_COLS;
 		cout << REF_INDS << " individuals in the GENO_FILE." << endl; 
 		foutLog << REF_INDS << " individuals in the GENO_FILE." << endl; 		 		
-		if(REF_INDS < 0){
+		if (REF_INDS < 0) {
 			cerr << "Error: Invalid number of rows in '" << GENO_FILE << "'." << endl;
 			foutLog << "Error: Invalid number of rows in '" << GENO_FILE << "'." << endl;
 			flag = 0;
 		}
-		if(tmpLOCI < 0){
+		if (tmpLOCI < 0) {
 			cerr << "Error: Invalid number of columns in the GENO_FILE '" << GENO_FILE << "'." << endl;
 			foutLog << "Error: Invalid number of columns in the GENO_FILE '" << GENO_FILE << "'." << endl;
 			flag = 0;
@@ -515,12 +491,12 @@ int main(int argc, char* argv[]){
 		cout << LOCI_G << " loci in the GENO_FILE." << endl; 
 		foutLog << LOCI_G << " loci in the GENO_FILE." << endl;
 		
-		if(tmpLOCI < 0 || tmpLOCI != LOCI_G){
+		if ((tmpLOCI < 0) || (tmpLOCI != LOCI_G)) {
 			cerr << "Error: Number of loci doesn't match in '" << GENO_SITE_FILE << "' and '" << GENO_FILE << "'." << endl;
 			foutLog << "Error: Number of loci doesn't match in '" << GENO_SITE_FILE << "' and '" << GENO_FILE << "'." << endl;	
 			flag = 0;
-		}else if(LOCI>0){
-			if(SEQ_FILE.compare(default_str)!=0 && PCA_MODE==0){
+		} else if (LOCI > 0) {
+			if ((SEQ_FILE.compare(default_str) != 0) && (PCA_MODE == 0)) {
 				cmnS.set_size(LOCI);
 				cmnG.set_size(LOCI);
 				for(i=0; i<LOCI; i++){
@@ -539,7 +515,7 @@ int main(int argc, char* argv[]){
 		idxS.clear();
 		alleleG.clear();
 		alleleS.clear();
-	}else{
+	} else {
 		cerr << "Error: GENO_FILE (-g) is not specified." << endl;
 		foutLog << "Error: GENO_FILE (-g) is not specified." << endl;
 		foutLog.close();
@@ -547,75 +523,74 @@ int main(int argc, char* argv[]){
 		return 1;
 	}
 	
-	if(COORD_FILE.compare(default_str) != 0 && GENO_FILE.compare(default_str) != 0 && flag == 1){
+	if ((COORD_FILE.compare(default_str) != 0) && (GENO_FILE.compare(default_str) != 0) && (flag == 1)) {
         TableReader coord_reader;
-
-//	    if(!get_table_dim(nrow, ncol, COORD_FILE, '\t')){
-//			cerr << "Error: cannot open the COORD_FILE '" << COORD_FILE << "'." << endl;
-//			foutLog << "Error: cannot open the COORD_FILE '" << COORD_FILE << "'." << endl;
-//			foutLog.close();
-//			return 1;
-//		}
         coord_reader.set_file_name(COORD_FILE);
         coord_reader.open();
         coord_reader.get_dim(nrow, ncol, '\t');
+        coord_reader.close();
 		int tmpINDS = nrow - COORD_NON_DATA_ROWS;
 		NUM_PCS = ncol - COORD_NON_DATA_COLS;
 		cout << tmpINDS << " individuals in the COORD_FILE." << endl;
 		cout << NUM_PCS << " PCs in the COORD_FILE." << endl;
 		foutLog << tmpINDS << " individuals in the COORD_FILE." << endl;
 		foutLog << NUM_PCS << " PCs in the COORD_FILE." << endl;
-		
-		if(tmpINDS < 0){
+		if (tmpINDS < 0) {
 			cerr << "Error: Invalid number of rows in the COORD_FILE " << COORD_FILE << "." << endl;
 			foutLog << "Error: Invalid number of rows in the COORD_FILE " << COORD_FILE << "." << endl;
 			flag = 0;
-		}else if(tmpINDS != REF_INDS && REF_INDS >= 0){
+		} else if ((tmpINDS != REF_INDS) && (REF_INDS >= 0)) {
 			cout << tmpINDS << "\t" << REF_INDS << endl;
 			cerr << "Error: Number of individuals in the COORD_FILE is not the same as in the GENO_FILE." << endl;
 			foutLog << "Error: Number of individuals in the COORD_FILE is not the same as in the GENO_FILE." << endl;
 			flag = 0;
 		}
-		if(NUM_PCS < 0){
+		if (NUM_PCS < 0) {
 			cerr << "Error: Invalid number of columns in the COORD_FILE " << COORD_FILE << "." << endl;
 			foutLog << "Error: Invalid number of columns in the COORD_FILE " << COORD_FILE << "." << endl;
 			flag = 0;
 		}
-		coord_reader.close();
 	}
-	if(flag == 0){
+
+	if (flag == 0) {
 		foutLog.close();
 		return 1;
 	}
 	
 	//################  Set default values to some parameters #######################
-	if(REF_SIZE==default_int){ REF_SIZE = REF_INDS; }
-	if(FIRST_IND==default_int){ FIRST_IND = 1; }
-	if(LAST_IND==default_int){ LAST_IND = SEQ_INDS; }	
+	if (REF_SIZE == default_int) {
+	    REF_SIZE = REF_INDS;
+	}
+	if (FIRST_IND == default_int) {
+	    FIRST_IND = 1;
+	}
+	if (LAST_IND == default_int) {
+	    LAST_IND = SEQ_INDS;
+	}
 
 	// ################### Check Parameters #############################
 	flag = check_parameters();
-	if(MIN_LOCI <= DIM && PCA_MODE==0){
+	if ((MIN_LOCI <= DIM) && (PCA_MODE == 0)) {
 		cerr << "Warning: DIM>=MIN_LOCI is found; DIM=" << DIM << ", MIN_LOCI=" << MIN_LOCI << "." << endl; 
 		cerr << "Reset MIN_LOCI to DIM+1: MIN_LOCI=" << DIM+1 << "." << endl;
 		foutLog << "Warning: DIM>=MIN_LOCI is found; DIM=" << DIM << ", MIN_LOCI=" << MIN_LOCI << "." << endl; 
 		foutLog << "Reset MIN_LOCI to DIM+1: MIN_LOCI=" << DIM+1 << "." << endl;
-		MIN_LOCI = DIM+1;
+		MIN_LOCI = DIM + 1;
 	}
-	if(REF_SIZE > REF_INDS){
+	if (REF_SIZE > REF_INDS) {
 		cerr << "Warning: REF_SIZE>REF_INDS is found; REF_SIZE=" << REF_SIZE << ", REF_INDS=" << REF_INDS << "." << endl; 
 		cerr << "Reset REF_SIZE to REF_INDS: REF_SIZE=" << REF_INDS << "." << endl;
 		foutLog << "Warning: REF_SIZE>REF_INDS is found; REF_SIZE=" << REF_SIZE << ", REF_INDS=" << REF_INDS << "." << endl; 
 		foutLog << "Reset REF_SIZE to REF_INDS: REF_SIZE=" << REF_INDS << "." << endl;
 		REF_SIZE = REF_INDS;
 	}	
-	if(REPS==1){
+	if (REPS == 1) {
 		OUTPUT_REPS = 0;
 	}
-	if(flag==0){
+	if (flag == 0) {
 		foutLog.close();
 		return 1;
-	}else{
+	} else {
 		print_configuration();
 	}
 	// Setting significance cutoff for the Tracy-Widom statistic
@@ -638,7 +613,7 @@ int main(int argc, char* argv[]){
 	openblas_set_num_threads(NUM_THREADS);
 	
 	// #####################  Check data format ############################
-	if(CHECK_FORMAT != 0){
+	if (CHECK_FORMAT != 0) {
 		int flag1 = 1;
 		int flag2 = 1;
 		int flag3 = 1;
@@ -668,14 +643,22 @@ int main(int argc, char* argv[]){
 					foutLog << "GENO_FILE: not specified." << endl;
 			}
 		}
-		if(CHECK_FORMAT==1 || CHECK_FORMAT==3 || CHECK_FORMAT==10 || CHECK_FORMAT==30){
-			if(SEQ_FILE.compare(default_str)!=0){
-				flag2 = check_format_seq(SEQ_FILE, SEQ_INDS, LOCI_S);
-				if(flag2==1){
+		if ((CHECK_FORMAT == 1) || (CHECK_FORMAT == 3) || (CHECK_FORMAT == 10) || (CHECK_FORMAT == 30)) {
+			if (SEQ_FILE.compare(default_str) != 0) {
+			    TableReader seq_reader;
+			    string message("");
+			    seq_reader.set_file_name(SEQ_FILE);
+			    seq_reader.open();
+                flag2 = seq_reader.check_format(SEQ_NON_DATA_ROWS, SEQ_NON_DATA_COLS, SEQ_INDS, LOCI_S, TableReader::Format::SEQ, message);
+				seq_reader.close();
+				if (flag2 == 1) {
 					cout << "SEQ_FILE: OK." << endl;
 					foutLog << "SEQ_FILE: OK." << endl;
+				} else {
+                    cout << message << endl;
+                    foutLog << message << endl;
 				}
-			}else{
+			} else {
 					cout << "SEQ_FILE: not specified." << endl;
 					foutLog << "SEQ_FILE: not specified." << endl;
 			}
@@ -724,13 +707,13 @@ int main(int argc, char* argv[]){
 	// === get the index of the reference individuals ===
 	uvec Refset(REF_SIZE);
 	int Index[REF_INDS], subset[REF_SIZE];
-	for(i=0; i<REF_INDS; i++){
+	for (i = 0; i < REF_INDS; ++i) {
 		Index[i] = i;
 	}
-	if(REF_SIZE >0){
-		if(REF_SIZE < REF_INDS){
+	if (REF_SIZE > 0) {
+		if (REF_SIZE < REF_INDS) {
 			gsl_ran_choose(rng, subset, REF_SIZE, Index, REF_INDS, sizeof (int));
-			for(i=0; i<REF_SIZE; i++){
+			for (i = 0; i < REF_SIZE; ++i) {
 				Refset(i) = subset[i];
 			}
 			Refset = sort(Refset);
@@ -739,8 +722,8 @@ int main(int argc, char* argv[]){
 			cout << endl << asctime (timeinfo);
 			cout << "Randomly select " << REF_SIZE << " reference individuals (-N)." << endl;
 			foutLog << "Randomly select " << REF_SIZE << " reference individuals (-N)." << endl;
-		}else{
-			for(i=0; i<REF_INDS; i++){
+		} else {
+			for (i = 0; i < REF_INDS; ++i) {
 				Refset(i) = i;
 			}
 		}
@@ -749,55 +732,57 @@ int main(int argc, char* argv[]){
 	// ###################### Exclude SNPs in the excluding list #################
 	urowvec ExLoci = zeros<urowvec>(LOCI);	
 
-	if(EXCLUDE_LIST.compare(default_str) != 0){
+	if (EXCLUDE_LIST.compare(default_str) != 0) {
 		fin.open(EXCLUDE_LIST.c_str());
-		if(fin.fail()){
+		if (fin.fail()) {
 			cerr << "Error: cannot open the file '" << EXCLUDE_LIST << "'." << endl;    
 			foutLog << "Error: cannot open the file '" << EXCLUDE_LIST << "'." << endl;   
 			foutLog.close();
 			gsl_rng_free(rng);	
 			return 1;
-		}else{
-			map<string,int> exSNP;
-			while(!fin.eof()){
+		} else {
+			map<string, int> exSNP;
+			while (!fin.eof()) {
 				fin >> str;
-				if(str.length()>0 && str!=" "){
+				if ((str.length() > 0) && (str != " ")) {
 					exSNP[str] = 1;
 				}				
 			}
 			fin.close();
 					
 			fin.open(GENO_SITE_FILE.c_str());
-			if(fin.fail()){
+			if (fin.fail()) {
 				cerr << "Error: cannot open the file '" << GENO_SITE_FILE << "'." << endl;    
 				foutLog << "Error: cannot open the file '" << GENO_SITE_FILE << "'." << endl;   
 				foutLog.close();
 				gsl_rng_free(rng);	
 				return 1;
-			}else if(exSNP.size()>0){
+			} else if (exSNP.size() > 0) {
 				getline(fin, str);
 				string snpID;
 				k = 0;
-				for(j=0; j<LOCI_G; j++){
+				for (j = 0; j < LOCI_G; ++j) {
 					fin >> str >> str >> snpID;
 					getline(fin, str);
-					if(j==cmnG(k)){
-						if(exSNP.count(snpID)>0 && ExLoci(k) == 0){
+					if (j == cmnG(k)) {
+						if ((exSNP.count(snpID) > 0) && (ExLoci(k) == 0)){
 							ExLoci(k) = 1;
-							LOCI_ex++;
+							++LOCI_ex;
 						}
-						k++;
+						++k;
 					}
-					if(k==LOCI){ break;}
+					if (k == LOCI) {
+					    break;
+					}
 				}
 			}
 			fin.close();
 			Lex += LOCI_ex;
 		}
 	}
-	if(TRIM_PROP > 0){
-		for(int j=0; j<LOCI; j++){
-			if(gsl_rng_uniform(rng)<TRIM_PROP && ExLoci(j) == 0){
+	if (TRIM_PROP > 0) {
+		for (int j = 0; j < LOCI; ++j) {
+			if ((gsl_rng_uniform(rng) < TRIM_PROP) && (ExLoci(j) == 0)) {
 				ExLoci(j) = 1;
 				LOCI_trim++;
 			}
@@ -807,8 +792,9 @@ int main(int argc, char* argv[]){
 		
 	// #####################  Check coverage ############################
 	int Ls = 0;
-	int Lg = 0;	
-	if((CHECK_COVERAGE != 0 || MAX_COVERAGE>0 || MIN_COVERAGE>0) && PCA_MODE == 0){
+	int Lg = 0;
+
+	if (((CHECK_COVERAGE != 0) || (MAX_COVERAGE > 0) || (MIN_COVERAGE > 0)) && (PCA_MODE == 0)) {
 		time ( &rawtime );
   		timeinfo = localtime ( &rawtime );
   		cout << endl << asctime (timeinfo);
@@ -817,11 +803,11 @@ int main(int argc, char* argv[]){
 		foutLog << "Checking coverage in the sequence data ..." << endl;
 
 		int flag = check_coverage(CHECK_COVERAGE, FIRST_IND, LAST_IND, cmnS, ExLoci, Ls, Lg);
-		if(flag == 0){	
+		if (flag == 0) {
 			foutLog.close();
 			gsl_rng_free(rng);	
 			return 1;
-		}else if(CHECK_COVERAGE == 2){	
+		} else if (CHECK_COVERAGE == 2) {
 			time ( &rawtime );
  		 	timeinfo = localtime ( &rawtime );
 			runningtime = timer.toc();
@@ -834,7 +820,7 @@ int main(int argc, char* argv[]){
 			foutLog.close();
 			gsl_rng_free(rng);	
 			return 0;			
-		}else{
+		} else {
 			Lex += Lg;
 			Lex += Ls;
 		}
@@ -842,7 +828,7 @@ int main(int argc, char* argv[]){
 
 	// ##################################################################
 	
-	int LOCI_in = LOCI-Lex;	
+	int LOCI_in = LOCI - Lex;
 	if(LOCI_in<LOCI_G || SEQ_FILE.compare(default_str)!=0){
 		time ( &rawtime );
 		timeinfo = localtime ( &rawtime );
@@ -1229,15 +1215,14 @@ int main(int argc, char* argv[]){
 	delete [] RefInfo2;
 					
 	//========================= Read sequence data ==========================
-		
-	fin.open(SEQ_FILE.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the SEQ_FILE '"<< SEQ_FILE <<"'." << endl;
-		foutLog << "Error: cannot find the SEQ_FILE '"<< SEQ_FILE <<"'." << endl;
-		foutLog.close();
-		gsl_rng_free(rng);		
-		return 1;
-	}
+
+	TableReader seq_reader;
+    char* end = nullptr;
+    const char* token = nullptr;
+
+    seq_reader.set_file_name(SEQ_FILE);
+	seq_reader.open();
+
 	//==== Open output file ====
 	outfile = OUT_PREFIX;
 	outfile.append(".SeqPC.coord");
@@ -1297,309 +1282,297 @@ int main(int argc, char* argv[]){
 	cout << "Analyzing sequence samples ..." << endl;
   	foutLog << endl << asctime (timeinfo);	
 	foutLog << "Analyzing sequence samples ..." << endl;
-	
-	if(DIM_HIGH == 0){
+
+	if (DIM_HIGH == 0) {
 		AUTO_MODE = true;
 	}
-	
-	for(i=0; i<SEQ_NON_DATA_ROWS; i++){
-		getline(fin, str);          // Read non-data rows
-	}
+    i = row = 0;
+    while (seq_reader.read_row(tokens, '\t') >= 0) {
+        ++row;
+        if (row <= SEQ_NON_DATA_ROWS) { // Skip non-data rows
+            continue;
+        }
+        ++i;
+        if (i < FIRST_IND) {
+            continue;
+        }
+        if (i > LAST_IND) {
+            break;
+        }
+        string SeqInfo1 = tokens[0];
+        string SeqInfo2 = tokens[1];
+        urowvec tmpC(LOCI_S);    // Coverage of one sample
+        frowvec tmpS(LOCI_S);    // Sequence read of one sample
+        frowvec tmpQ(LOCI_S);    // Base quality of one sample
+        for(j = 0; j < LOCI_S; ++j) {
+            end = nullptr;
+            token = tokens.at(SEQ_NON_DATA_COLS + j).c_str();
+            tmpC(j) = strtoul(token, &end, 10);
+            if ((*end != ' ') || (errno == ERANGE)) {
+                cerr << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog.close();
+                gsl_rng_free(rng);
+                return 1;
+            }
+            token = end;
+            tmpS(j) = strtof(token, &end);
+            if ((*end != ' ') || (errno == ERANGE) || (tmpS(j) < 0) || (tmpS(j) > tmpC(j))) {
+                cerr << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog.close();
+                gsl_rng_free(rng);
+                return 1;
+            }
+            token = end;
+            tmpQ(j) = strtof(token, &end);
+            if ((*end != '\0') || (errno == ERANGE) || (tmpQ(j) < 0)) {
+                cerr << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog.close();
+                gsl_rng_free(rng);
+                return 1;
+            }
+        }
 
-//	#pragma omp parallel for private(i)
-	for(i=1; i<=LAST_IND; i++){
-		if(i<FIRST_IND){
-			getline(fin, str);
-		}else{
-			string SeqInfo1;
-			string SeqInfo2;
-			urowvec tmpC(LOCI_S);    // Coverage of one sample
-			frowvec tmpS(LOCI_S);    // Sequence read of one sample
-			frowvec tmpQ(LOCI_S);    // Base quality of one sample
-						
-			fin >> SeqInfo1 >> SeqInfo2;	
-			for(j=2; j<SEQ_NON_DATA_COLS; j++){
-				fin >> str;
-			}
-			for(j=0; j<LOCI_S; j++){				
-				fin >> tmpC(j) >> tmpS(j) >> tmpQ(j);					
- 				if(tmpC(j)<0 || tmpS(j)<0 || tmpS(j)>tmpC(j) || tmpQ(j)<0){
-					if(!fin.good()){
-						fin.close();
-						cerr << "Error: ifstream error occurs when reading the SEQ_FILE." << endl;
-						cerr << "Run 'laser -fmt 3' to check the SEQ_FILE '" << SEQ_FILE << "'." << endl;
-						foutLog << "Error: ifstream error occurs when reading the SEQ_FILE." << endl;
-						foutLog << "Run 'laser -fmt 3' to check the SEQ_FILE '" << SEQ_FILE << "'." << endl;
-						foutLog.close();
-						gsl_rng_free(rng);	
-						return 1;
-					}else{
-						fin.close();
-						cerr << "Error: invalid value at locus "<< j+1 << " of individual " << i << " in the SEQ_FILE." << endl;
-						foutLog << "Error: invalid value at locus "<< j+1 << " of individual " << i << " in the SEQ_FILE." << endl;
-						foutLog.close();
-						gsl_rng_free(rng);		
-						return 1;
-					}
-				} 
-			}
-			
-			urowvec C(LOCI_in);    // Coverage of one sample
-			frowvec S(LOCI_in);    // Sequence read of one sample
-			frowvec Q(LOCI_in);    // Base quality of one sample
-			uvec LOC(LOCI_in);    // Indices of covered loci
-			double meanC = 0;
-			int Lcov = 0;     // Number of loci with nonzero coverage
-			k = 0;
-			for(j=0; j<LOCI; j++){				
-				if(ExLoci(j)==0){
-					C(k) = tmpC(cmnS(j));
-					C(k) = tmpC(cmnS(j));
-					S(k) = tmpS(cmnS(j));
-					Q(k) = tmpQ(cmnS(j));					
-					if(C(k)>0){
-						LOC(Lcov) = k;
-						Lcov++;
-						meanC += C(k);
-					}
-					k++;
-				}
-			}
-			tmpC.clear();
-			tmpS.clear();
-			tmpQ.clear();
-			LOC.resize(Lcov);
-			meanC = meanC/LOCI_in;
-			
-			uvec Loc;
-			int Linc;    // Number of loci to include in the computation of PCA
-			if(Lcov>MAX_LOCI){  // Randomly excluding loci if Lcov >  MAX_LOCI
-				Linc = MAX_LOCI;
-				vec v = randu<vec>(Lcov);
-				uvec idx = sort_index(v);			
-				idx.resize(MAX_LOCI);
-				idx = sort(idx, "ascend");
-				Loc = LOC(idx);
-				cout << "Randomly select " << Linc << " out of " << Lcov << " covered loci for " << SeqInfo1 << ":" << SeqInfo2 << "." << endl;
-				foutLog << "Randomly select " << Linc << " out of " << Lcov << " covered loci for " << SeqInfo1 << ":" << SeqInfo2 << "." << endl;
-			}else{
-				Linc = Lcov;
-				Loc = LOC;
-			}
-			LOC.clear();
-			urowvec Cc(Linc);
-			frowvec Sc(Linc);
-			frowvec Qc(Linc);
-			for(j=0; j<Linc; j++){
-				Cc(j) = C(Loc(j));
-				Sc(j) = S(Loc(j));
-				Qc(j) = Q(Loc(j));
-			}
-			C.clear();
-			S.clear();
-			Q.clear();
-			
-			if(Linc >= MIN_LOCI){
-				double t_m1 = 0;
-				double t_m2 = 0;
-				double Z_m1 = 0;
-				double Z_m2 = 0;
-				double dim_high = 0;
-				rowvec rotPC_m1 = zeros<rowvec>(DIM);
-				rowvec rotPC_m2 = zeros<rowvec>(DIM);
-				for(int rep=0; rep<REPS; rep++){
-					//=================== Simulate sequence reads ======================
-					fmat SS(REF_SIZE, Linc);
-					if(SEQ_ERR != -1){
-						simuseq(RefG, Cc, Loc, SEQ_ERR, SS, rng);
-					}else{
-						simuseq2(RefG, Cc, Loc, Qc, SS, rng);
-					}					  
-					SS.insert_rows(REF_SIZE, Sc);
-					//=================== Perform PCA =================================	
-					fmat SSm;
-					fmat SSsd;
-					normalize(SS, SSm, SSsd);	
-					mat M = conv_to<mat>::from(SS*SS.t());					
-					vec eigval;
-					mat eigvec;
-                    eig_sym(eigval, eigvec, M, "dc");	// use "divide & conquer" algorithm
-					//M.clear();
-					SS.clear();									
-					if(AUTO_MODE){						
-						// ####    Calculate Tracy-Widom Statistics and determine DIM_HIGH  ####
-						// Calculation of TW statistic follows Patterson et al 2006 PLoS Genetics 
-						DIM_HIGH = 0;
-						double eigsum = 0;
-						double eig2sum = 0;
-						double eigsum2 = 0;
-						for(j=0; j<REF_SIZE; j++){     // The length of eigval is REF_SIZE+1;
-							eigsum += eigval(j+1);
-							eig2sum += pow(eigval(j+1), 2);
-						}
-						for(j=0; j<REF_SIZE; j++){
-							int m = REF_SIZE-j;
-							if(j>0){
-								eigsum -= eigval(m+1);
-								eig2sum -= pow(eigval(m+1),2);
-							}
-							eigsum2 = eigsum*eigsum;
-							double n = (m+1)*eigsum2/((m-1)*eig2sum-eigsum2);
-							double nsqrt = sqrt(n-1);
-							double msqrt = sqrt(m);
-							double mu = pow(nsqrt+msqrt, 2)/n;
-							double sigma = (nsqrt+msqrt)/n*pow(1/nsqrt+1/msqrt, 1.0/3);
-							double x = (m*eigval(m)/eigsum-mu)/sigma;  // Tracy-Widom statistic
-							if(x>TW){           // TW is the threshold for the Tracy-Widom statisic
-								DIM_HIGH++;
-							}else{
-								break;
-							}
-						}
-						if(DIM_HIGH<DIM){
-							DIM_HIGH = DIM;
-							cout << "Warning: DIM is greater than the number of significant PCs for study sample " << i << "." << endl;
-							foutLog << "Warning: DIM is greater than the number of significant PCs for study sample " << i << "." << endl;
-						}
-					}
-					mat simuPC(REF_SIZE, DIM_HIGH);
-					rowvec PC_one = zeros<rowvec>(DIM_HIGH);					
-					for(j=0; j<DIM_HIGH; j++){
-						for(k=0; k<REF_SIZE; k++){
-							simuPC(k,j) = eigvec(k, REF_SIZE-j)*sqrt(eigval(REF_SIZE-j));
-						}
-						PC_one(j) = eigvec(REF_SIZE, REF_SIZE-j)*sqrt(eigval(REF_SIZE-j));
-					}				
-					
-					//=================  Procrustes Analysis =======================
-					mat simuPC_rot(REF_SIZE, DIM_HIGH);
-					double t;
-					double rho;
-					mat A(DIM_HIGH, DIM_HIGH);
-					rowvec b(DIM_HIGH);
-					double epsilon = pprocrustes(simuPC, refPC, simuPC_rot, t, rho, A, b, MAX_ITER, THRESHOLD, PROCRUSTES_SCALE);
-					if(epsilon>THRESHOLD){
-						cout << "Warning: Projection Procrustes analysis doesn't converge in " << MAX_ITER << " iterations for " << SeqInfo2 <<", epsilon=" << epsilon << "." << endl;
-						foutLog << "Warning: Projection Procrustes analysis doesn't converge in " << MAX_ITER << " iterations for " << SeqInfo2 <<", epsilon=" << epsilon << "." << endl;
-					}	
-					simuPC.clear();
-					simuPC_rot.clear();
-					rowvec rotPC_one = rho*PC_one*A+b;
-					if(DIM_HIGH > DIM){
-						rotPC_one.shed_cols(DIM, DIM_HIGH-1);
-					}
-					
-					//== Calculating Z score to indicate if an individual's ancestry is represented in the reference ==
-					vec d1 = zeros<vec>(REF_SIZE);
-					for(j=0; j<REF_SIZE; j++){
-						rowvec v = rotPC_one-refPC.row(j);
-						for(k=0; k<DIM; k++) d1(j) += v(k)*v(k);
-					}
-					uvec idx = sort_index(d1);
-					vec Mk = zeros<vec>(KNN_ZSCORE);
-					for(j=0; j<KNN_ZSCORE; j++) Mk(j) = M(idx(j),idx(j));
-					double Z = (M(REF_SIZE,REF_SIZE)-mean(Mk))/stddev(Mk);
-					
-					//================= Output Procrustes Results for one repated run ===================	
-					if(REPS == 1){
-						fout << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << DIM_HIGH << "\t" << t << "\t" << Z << "\t"; 
-						for(j=0; j<DIM-1; j++){ fout << rotPC_one(j) << "\t"; }
-						fout << rotPC_one(DIM-1) << endl;
-					}else if(REPS > 1){
-						if(OUTPUT_REPS == 1){
-							fout3 << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << DIM_HIGH << "\t" << t << "\t" << Z << "\t"; 
-							for(j=0; j<DIM-1; j++){ fout3 << rotPC_one(j) << "\t"; }
-							fout3 << rotPC_one(DIM-1) << endl;
-						}	
-						t_m1 += t;
-						t_m2 += pow(t,2);
-						Z_m1 += Z;
-						Z_m2 += pow(Z,2);
-						rotPC_m1 = rotPC_m1 + rotPC_one;
-						rotPC_m2 = rotPC_m2 + rotPC_one%rotPC_one;
-						dim_high = dim_high + DIM_HIGH;
-					}
-				}
-				Cc.clear();	
-				Sc.clear();
-				Qc.clear();
-				Loc.clear();		
-				//================= Output Procrustes Results ===================
-				if(REPS>1){
-					// calculate mean and sd
-					double t_mean = t_m1/REPS;
-					double t_sd = sqrt((t_m2-REPS*pow(t_mean,2))/(REPS-1));
-					double Z_mean = Z_m1/REPS;
-					double Z_sd = sqrt((Z_m2-REPS*pow(Z_mean,2))/(REPS-1));
-					dim_high = dim_high/REPS;
-					rowvec rotPC_mean = rotPC_m1/REPS;
-					rowvec rotPC_sd = sqrt((rotPC_m2-REPS*rotPC_mean%rotPC_mean)/(REPS-1));	
-					// output mean values of results
-					fout << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << dim_high << "\t" << t_mean << "\t" << Z_mean << "\t"; 
-					for(j=0; j<DIM-1; j++){
-						fout << rotPC_mean(j) << "\t";
-					}
-					fout << rotPC_mean(DIM-1) << endl;
-					// output sd values of results
-					fout2 << SeqInfo1 << "\t" << SeqInfo2 << "\t" << t_sd << "\t" << Z_sd << "\t"; 
-					for(j=0; j<DIM-1; j++){
-						fout2 << rotPC_sd(j) << "\t";
-					}
-					fout2 << rotPC_sd(DIM-1) << endl;
-					// declare vectors
-					rotPC_mean.clear();
-					rotPC_sd.clear();
-				}
-				rotPC_m1.clear();
-				rotPC_m2.clear();
-			}else{
-				//Too few number of loci covered. Skip computation and output "NA".
-				cout << "Warning: skipping sample "<< SeqInfo2 << " (# covered loci < MIN_LOCI)." << endl;
-				foutLog << "Warning: skipping sample "<< SeqInfo2 << " (# covered loci < MIN_LOCI)." << endl;
-				fout << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t"; 
-				for(j=0; j<DIM-1; j++){
-					fout << "NA" << "\t";
-				}
-				fout << "NA" << endl;
-				if(REPS>1){
-					fout2 << SeqInfo1 << "\t" << SeqInfo2 << "\t" << "NA" << "\t"; 
-					for(j=0; j<DIM-1; j++){ fout2 << "NA" << "\t"; }
-					fout2 << "NA" << endl;
-					if(OUTPUT_REPS==1){
-						for(int rep=0; rep<REPS; rep++){
-							fout3 << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t"; 
-							for(j=0; j<DIM-1; j++){ fout3 << "NA" << "\t"; }
-							fout3 << "NA" << endl;
-						}
-					}
-				}
-			}		
-			if(i%50==0){	
-				cout << "Progress: finish analysis of individual " << i << "." << endl;
-				foutLog << "Progress: finish analysis of individual " << i << "." << endl;			
-			}
-		}
+        urowvec C(LOCI_in);    // Coverage of one sample
+        frowvec S(LOCI_in);    // Sequence read of one sample
+        frowvec Q(LOCI_in);    // Base quality of one sample
+        uvec LOC(LOCI_in);    // Indices of covered loci
+        double meanC = 0;
+        int Lcov = 0;     // Number of loci with nonzero coverage
+        k = 0;
+        for(j=0; j<LOCI; j++){
+            if(ExLoci(j)==0){
+                C(k) = tmpC(cmnS(j));
+                C(k) = tmpC(cmnS(j));
+                S(k) = tmpS(cmnS(j));
+                Q(k) = tmpQ(cmnS(j));
+                if(C(k)>0){
+                    LOC(Lcov) = k;
+                    Lcov++;
+                    meanC += C(k);
+                }
+                k++;
+            }
+        }
+        tmpC.clear();
+        tmpS.clear();
+        tmpQ.clear();
+        LOC.resize(Lcov);
+        meanC = meanC/LOCI_in;
+
+        uvec Loc;
+        int Linc;    // Number of loci to include in the computation of PCA
+        if(Lcov>MAX_LOCI){  // Randomly excluding loci if Lcov >  MAX_LOCI
+            Linc = MAX_LOCI;
+            vec v = randu<vec>(Lcov);
+            uvec idx = sort_index(v);
+            idx.resize(MAX_LOCI);
+            idx = sort(idx, "ascend");
+            Loc = LOC(idx);
+            cout << "Randomly select " << Linc << " out of " << Lcov << " covered loci for " << SeqInfo1 << ":" << SeqInfo2 << "." << endl;
+            foutLog << "Randomly select " << Linc << " out of " << Lcov << " covered loci for " << SeqInfo1 << ":" << SeqInfo2 << "." << endl;
+        }else{
+            Linc = Lcov;
+            Loc = LOC;
+        }
+        LOC.clear();
+        urowvec Cc(Linc);
+        frowvec Sc(Linc);
+        frowvec Qc(Linc);
+        for(j=0; j<Linc; j++){
+            Cc(j) = C(Loc(j));
+            Sc(j) = S(Loc(j));
+            Qc(j) = Q(Loc(j));
+        }
+        C.clear();
+        S.clear();
+        Q.clear();
+
+        if(Linc >= MIN_LOCI){
+            double t_m1 = 0;
+            double t_m2 = 0;
+            double Z_m1 = 0;
+            double Z_m2 = 0;
+            double dim_high = 0;
+            rowvec rotPC_m1 = zeros<rowvec>(DIM);
+            rowvec rotPC_m2 = zeros<rowvec>(DIM);
+            for(int rep=0; rep<REPS; rep++){
+                //=================== Simulate sequence reads ======================
+                fmat SS(REF_SIZE, Linc);
+                if(SEQ_ERR != -1){
+                    simuseq(RefG, Cc, Loc, SEQ_ERR, SS, rng);
+                }else{
+                    simuseq2(RefG, Cc, Loc, Qc, SS, rng);
+                }
+                SS.insert_rows(REF_SIZE, Sc);
+                //=================== Perform PCA =================================
+                fmat SSm;
+                fmat SSsd;
+                normalize(SS, SSm, SSsd);
+                mat M = conv_to<mat>::from(SS*SS.t());
+                vec eigval;
+                mat eigvec;
+                eig_sym(eigval, eigvec, M, "dc");	// use "divide & conquer" algorithm
+                //M.clear();
+                SS.clear();
+                if(AUTO_MODE){
+                    // ####    Calculate Tracy-Widom Statistics and determine DIM_HIGH  ####
+                    // Calculation of TW statistic follows Patterson et al 2006 PLoS Genetics
+                    DIM_HIGH = 0;
+                    double eigsum = 0;
+                    double eig2sum = 0;
+                    double eigsum2 = 0;
+                    for(j=0; j<REF_SIZE; j++){     // The length of eigval is REF_SIZE+1;
+                        eigsum += eigval(j+1);
+                        eig2sum += pow(eigval(j+1), 2);
+                    }
+                    for(j=0; j<REF_SIZE; j++){
+                        int m = REF_SIZE-j;
+                        if(j>0){
+                            eigsum -= eigval(m+1);
+                            eig2sum -= pow(eigval(m+1),2);
+                        }
+                        eigsum2 = eigsum*eigsum;
+                        double n = (m+1)*eigsum2/((m-1)*eig2sum-eigsum2);
+                        double nsqrt = sqrt(n-1);
+                        double msqrt = sqrt(m);
+                        double mu = pow(nsqrt+msqrt, 2)/n;
+                        double sigma = (nsqrt+msqrt)/n*pow(1/nsqrt+1/msqrt, 1.0/3);
+                        double x = (m*eigval(m)/eigsum-mu)/sigma;  // Tracy-Widom statistic
+                        if(x>TW){           // TW is the threshold for the Tracy-Widom statisic
+                            DIM_HIGH++;
+                        }else{
+                            break;
+                        }
+                    }
+                    if(DIM_HIGH<DIM){
+                        DIM_HIGH = DIM;
+                        cout << "Warning: DIM is greater than the number of significant PCs for study sample " << i << "." << endl;
+                        foutLog << "Warning: DIM is greater than the number of significant PCs for study sample " << i << "." << endl;
+                    }
+                }
+                mat simuPC(REF_SIZE, DIM_HIGH);
+                rowvec PC_one = zeros<rowvec>(DIM_HIGH);
+                for(j=0; j<DIM_HIGH; j++){
+                    for(k=0; k<REF_SIZE; k++){
+                        simuPC(k,j) = eigvec(k, REF_SIZE-j)*sqrt(eigval(REF_SIZE-j));
+                    }
+                    PC_one(j) = eigvec(REF_SIZE, REF_SIZE-j)*sqrt(eigval(REF_SIZE-j));
+                }
+
+                //=================  Procrustes Analysis =======================
+                mat simuPC_rot(REF_SIZE, DIM_HIGH);
+                double t;
+                double rho;
+                mat A(DIM_HIGH, DIM_HIGH);
+                rowvec b(DIM_HIGH);
+                double epsilon = pprocrustes(simuPC, refPC, simuPC_rot, t, rho, A, b, MAX_ITER, THRESHOLD, PROCRUSTES_SCALE);
+                if(epsilon>THRESHOLD){
+                    cout << "Warning: Projection Procrustes analysis doesn't converge in " << MAX_ITER << " iterations for " << SeqInfo2 <<", epsilon=" << epsilon << "." << endl;
+                    foutLog << "Warning: Projection Procrustes analysis doesn't converge in " << MAX_ITER << " iterations for " << SeqInfo2 <<", epsilon=" << epsilon << "." << endl;
+                }
+                simuPC.clear();
+                simuPC_rot.clear();
+                rowvec rotPC_one = rho*PC_one*A+b;
+                if(DIM_HIGH > DIM){
+                    rotPC_one.shed_cols(DIM, DIM_HIGH-1);
+                }
+
+                //== Calculating Z score to indicate if an individual's ancestry is represented in the reference ==
+                vec d1 = zeros<vec>(REF_SIZE);
+                for(j=0; j<REF_SIZE; j++){
+                    rowvec v = rotPC_one-refPC.row(j);
+                    for(k=0; k<DIM; k++) d1(j) += v(k)*v(k);
+                }
+                uvec idx = sort_index(d1);
+                vec Mk = zeros<vec>(KNN_ZSCORE);
+                for(j=0; j<KNN_ZSCORE; j++) Mk(j) = M(idx(j),idx(j));
+                double Z = (M(REF_SIZE,REF_SIZE)-mean(Mk))/stddev(Mk);
+
+                //================= Output Procrustes Results for one repated run ===================
+                if(REPS == 1){
+                    fout << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << DIM_HIGH << "\t" << t << "\t" << Z << "\t";
+                    for(j=0; j<DIM-1; j++){ fout << rotPC_one(j) << "\t"; }
+                    fout << rotPC_one(DIM-1) << endl;
+                }else if(REPS > 1){
+                    if(OUTPUT_REPS == 1){
+                        fout3 << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << DIM_HIGH << "\t" << t << "\t" << Z << "\t";
+                        for(j=0; j<DIM-1; j++){ fout3 << rotPC_one(j) << "\t"; }
+                        fout3 << rotPC_one(DIM-1) << endl;
+                    }
+                    t_m1 += t;
+                    t_m2 += pow(t,2);
+                    Z_m1 += Z;
+                    Z_m2 += pow(Z,2);
+                    rotPC_m1 = rotPC_m1 + rotPC_one;
+                    rotPC_m2 = rotPC_m2 + rotPC_one%rotPC_one;
+                    dim_high = dim_high + DIM_HIGH;
+                }
+            }
+            Cc.clear();
+            Sc.clear();
+            Qc.clear();
+            Loc.clear();
+            //================= Output Procrustes Results ===================
+            if(REPS>1){
+                // calculate mean and sd
+                double t_mean = t_m1/REPS;
+                double t_sd = sqrt((t_m2-REPS*pow(t_mean,2))/(REPS-1));
+                double Z_mean = Z_m1/REPS;
+                double Z_sd = sqrt((Z_m2-REPS*pow(Z_mean,2))/(REPS-1));
+                dim_high = dim_high/REPS;
+                rowvec rotPC_mean = rotPC_m1/REPS;
+                rowvec rotPC_sd = sqrt((rotPC_m2-REPS*rotPC_mean%rotPC_mean)/(REPS-1));
+                // output mean values of results
+                fout << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << dim_high << "\t" << t_mean << "\t" << Z_mean << "\t";
+                for(j=0; j<DIM-1; j++){
+                    fout << rotPC_mean(j) << "\t";
+                }
+                fout << rotPC_mean(DIM-1) << endl;
+                // output sd values of results
+                fout2 << SeqInfo1 << "\t" << SeqInfo2 << "\t" << t_sd << "\t" << Z_sd << "\t";
+                for(j=0; j<DIM-1; j++){
+                    fout2 << rotPC_sd(j) << "\t";
+                }
+                fout2 << rotPC_sd(DIM-1) << endl;
+                // declare vectors
+                rotPC_mean.clear();
+                rotPC_sd.clear();
+            }
+            rotPC_m1.clear();
+            rotPC_m2.clear();
+        }else{
+            //Too few number of loci covered. Skip computation and output "NA".
+            cout << "Warning: skipping sample "<< SeqInfo2 << " (# covered loci < MIN_LOCI)." << endl;
+            foutLog << "Warning: skipping sample "<< SeqInfo2 << " (# covered loci < MIN_LOCI)." << endl;
+            fout << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
+            for(j=0; j<DIM-1; j++){
+                fout << "NA" << "\t";
+            }
+            fout << "NA" << endl;
+            if(REPS>1){
+                fout2 << SeqInfo1 << "\t" << SeqInfo2 << "\t" << "NA" << "\t";
+                for(j=0; j<DIM-1; j++){ fout2 << "NA" << "\t"; }
+                fout2 << "NA" << endl;
+                if(OUTPUT_REPS==1){
+                    for(int rep=0; rep<REPS; rep++){
+                        fout3 << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << meanC << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
+                        for(j=0; j<DIM-1; j++){ fout3 << "NA" << "\t"; }
+                        fout3 << "NA" << endl;
+                    }
+                }
+            }
+        }
+        if(i%50==0){
+            cout << "Progress: finish analysis of individual " << i << "." << endl;
+            foutLog << "Progress: finish analysis of individual " << i << "." << endl;
+        }
 	}
-	if(!fin.good()){
-		fin.close();
-		fout.close();
-		if(REPS>1){
-			fout2.close();
-			if(OUTPUT_REPS==1){
-				fout3.close();
-			}
-		}	
-		cerr << "Error: ifstream error occurs when reading the SEQ_FILE." << endl;
-		cerr << "Run 'laser -fmt 3' to check the SEQ_FILE '" << SEQ_FILE << "'." << endl;
-		foutLog << "Error: ifstream error occurs when reading the SEQ_FILE." << endl;
-		foutLog << "Run 'laser -fmt 3' to check the SEQ_FILE '" << SEQ_FILE << "'." << endl;
-		foutLog.close();
-		gsl_rng_free(rng);	
-		return 1;
-	}
-	fin.close();
+    seq_reader.close();
 	fout.close();
-	if(REPS>1){
+	if (REPS > 1) {
 		fout2.close();
 		cout << "Results for the sequence samples are output to:" << endl; 
 		cout << "'" << outfile << "' (mean across " << REPS << " repeated runs)" << endl;
@@ -1607,12 +1580,12 @@ int main(int argc, char* argv[]){
 		foutLog << "Results for the sequence samples are output to:" << endl; 
 		foutLog << "'" << outfile << "' (mean across " << REPS << " repeated runs)" << endl;
 		foutLog << "'" << outfile2 << "' (standard deviation across " << REPS << " repeated runs)" << endl;
-		if(OUTPUT_REPS==1){
+		if (OUTPUT_REPS == 1) {
 			fout3.close();	
 			cout << "'" << outfile3 << "' (results from all " << REPS << " repeated runs)" << endl;	
 			foutLog << "'" << outfile3 << "' (results from all " << REPS << " repeated runs)" << endl;	
 		}
-	}else{
+	} else {
 		cout << "Results for the sequence samples are output to '" << outfile << "'." << endl;
 		foutLog << "Results for the sequence samples are output to '" << outfile << "'." << endl;
 	}
@@ -1998,132 +1971,148 @@ int simuseq2(Mat<char> &G, urowvec &C, uvec &Loc, frowvec &Q, fmat &S, gsl_rng *
 }
 
 //################### Check the average coverage per sample and per locus ####################
-int check_coverage(int output, int first_ind, int last_ind, uvec cmnS, urowvec &ExLoci, int &Ls, int &Lg){	
-	int i=0;
-	int j=0;
-	int k=0;
+int check_coverage(int output, int first_ind, int last_ind, uvec cmnS, urowvec &ExLoci, int &Ls, int &Lg) {
+	int row = 0, i = 0, j = 0, k = 0;
 	string str;
-	ifstream fin;
 	ofstream fout;
-	fin.open(SEQ_FILE.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the SEQ_FILE '" << SEQ_FILE << "'." << endl;
-		foutLog << "Error: cannot find the SEQ_FILE '" << SEQ_FILE << "'." << endl;         
-		return 0;
-	}
-	for(i=0; i<SEQ_NON_DATA_ROWS; i++){
-		getline(fin, str);          // Read non-data rows
-	}
+
+	TableReader reader;
+	vector<string> tokens;
+    char* end = nullptr;
+    const char* token = nullptr;
+
+    reader.set_file_name(SEQ_FILE);
+    reader.open();
 
 	string outfile = OUT_PREFIX;
 	outfile.append(".ind.cov");	
-	if(output>0){
+	if (output > 0) {
 		fout.open(outfile.c_str());
-		if(fout.fail()){
+		if (fout.fail()) {
 			cerr << "Error: cannot create a file named " << outfile << "." << endl;
 			return 0;
 		}
 		fout << "popID" << "\t" << "indivID" << "\t" << "L1" << "\t"  << "Ci" << endl;
 	}
 
-	int L = LOCI-sum(ExLoci);
+	int L = LOCI - sum(ExLoci);
 	uvec idx(L);
 	uvec idx2(L);
 	vec C_loc = zeros<vec>(L);	// average coverage per marker
 	vec Ncov = zeros<vec>(L);   // number of samples with non-zero coverage
 	
-	i = 0;
-	k = 0;
-	for(j=0; j<LOCI_S; j++){
-		if(j==cmnS(k)){
-			if(ExLoci(k)==0){
+	i = k = 0;
+	for (j = 0; j < LOCI_S; ++j) {
+		if (j == cmnS(k)) {
+			if (ExLoci(k) == 0) {
 				idx(i) = j;
 				idx2(i) = k;
-				i++;
-				if(i==L) break;
+				++i;
+				if (i == L) break;
 			}
-			k++;
+			++k;
 		}
 	}
-	
-	for(i=1; i<=last_ind; i++)
-	{
-		if(i<first_ind){
-			getline(fin, str);
-		}else{
-			string SeqInfo1;
-			string SeqInfo2;
-			vec C(LOCI_S);  // Coverage of one sample
-			double S;       // Sequence read
-			double Q;       // Base quality
-			int Lcov=0;      // number of markers with non-zero coverage
-			double C_ind=0;  // average coverage per sample		
-			fin >> SeqInfo1 >> SeqInfo2;
-			for(j=2; j<SEQ_NON_DATA_COLS; j++){
-				fin >> str;
+
+    i = row = 0;
+    while (reader.read_row(tokens, '\t') >= 0) {
+        ++row;
+        if (row <= SEQ_NON_DATA_ROWS) { // Skip non-data rows
+            continue;
+        }
+        ++i;
+        if (i < FIRST_IND) {
+            continue;
+        }
+        if (i > LAST_IND) {
+            break;
+        }
+		vec C(LOCI_S);  // Coverage of one sample
+		double S;       // Sequence read
+		double Q;       // Base quality
+		int Lcov = 0;      // number of markers with non-zero coverage
+		double C_ind = 0;  // average coverage per sample
+		string SeqInfo1 = tokens[0];
+        string SeqInfo2 = tokens[1];
+        for(j = 0; j < LOCI_S; ++j) {
+            end = nullptr;
+            token = tokens.at(SEQ_NON_DATA_COLS + j).c_str();
+            C(j) = strtod(token, &end);
+            if ((*end != ' ') || (errno == ERANGE)) {
+                cerr << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                return 1;
+            }
+            token = end;
+            S = strtod(token, &end);
+            if ((*end != ' ') || (errno == ERANGE) || (S < 0) || (S > C(j))) {
+                cerr << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                return 1;
+            }
+            token = end;
+            Q = strtod(token, &end);
+            if ((*end != '\0') || (errno == ERANGE) || (Q < 0)) {
+                cerr << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                foutLog << "Error: invalid value at locus "<< j + 1 << " of individual " << i << " in the SEQ_FILE." << endl;
+                return 1;
+            }
+        }
+        for (j = 0; j < L; ++j) {
+            if (C(idx(j)) > 0 ){
+                ++Lcov;
+                C_ind += C(idx(j));
+                Ncov(j)++;
+                C_loc(j) += C(idx(j));
 			}
-			for(j=0; j<LOCI_S; j++){
-				fin >> C(j) >> S >> Q;
-			}
-			for(j=0; j<L; j++){
-				if(C(idx(j))>0){
-					Lcov++;
-					C_ind += C(idx(j));
-					Ncov(j)++;
-					C_loc(j) += C(idx(j));
-				}				
-			}
-			C_ind = C_ind/L;
-			if(output>0){
-				fout << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << C_ind << endl;
-			}		
+        }
+        C_ind = C_ind / L;
+        if (output > 0) {
+            fout << SeqInfo1 << "\t" << SeqInfo2 << "\t" << Lcov << "\t" << C_ind << endl;
 		}
 	}
-	fin.close();
-	if(output>0){
+    reader.close();
+	if (output > 0) {
 		fout.close();
 		cout << "Results of the mean coverage per individual are output to '" << outfile << "'." << endl;
 		foutLog << "Results of the mean coverage per individual are output to '" << outfile << "'." << endl;
 	}
-	C_loc = C_loc/(last_ind-first_ind+1);
+	C_loc = C_loc / (last_ind - first_ind + 1);
 
 	outfile = OUT_PREFIX;
 	outfile.append(".loc.cov");
-	if(output>0){
+	if (output > 0) {
 		fout.open(outfile.c_str());
-		if(fout.fail()){
+		if (fout.fail()) {
 			cerr << "Error: cannot create a file named " << outfile << "." << endl;
 			return 0;
 		}
 		fout << "ID" << "\t" << "N1" << "\t"  << "Cl" << endl;
 	}
-	fin.open(SEQ_SITE_FILE.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the SITE_FILE '" << SEQ_SITE_FILE << "'." << endl;
-		foutLog << "Error: cannot find the SITE_FILE '" << SEQ_SITE_FILE << "'." << endl;         
-		return 0;
-	}
-	getline(fin, str);
+
+	reader.set_file_name(SEQ_SITE_FILE);
+	reader.open();
+	reader.read_row(tokens, '\t'); //skip header TODO: check if header = CHR\tPOS\tID\tREF\tALT
 	k = 0;
-	for(j=0; j<LOCI_S; j++){
-		if(j==idx(k)){
-			if(output>0){
-				fin >> str >> str >> str;
-				fout << str << "\t" << Ncov(k) << "\t" << C_loc(k) << endl;
+	for (j = 0; j < LOCI_S; ++j) {
+        reader.read_row(tokens, '\t');
+		if (j == idx(k)) {
+			if (output > 0) {
+				fout << tokens.at(2) << "\t" << Ncov(k) << "\t" << C_loc(k) << endl;
 			}
-			if(MAX_COVERAGE>0 && C_loc(k)>MAX_COVERAGE){
+			if ((MAX_COVERAGE > 0) && (C_loc(k) > MAX_COVERAGE)) {
 				ExLoci(idx2(k)) = 1;
-				Lg++;
-			}else if(MIN_COVERAGE>0 && C_loc(k)<MIN_COVERAGE){
+				++Lg;
+			} else if ((MIN_COVERAGE > 0) && (C_loc(k) < MIN_COVERAGE)) {
 				ExLoci(idx2(k)) = 1;
-				Ls++;
+				++Ls;
 			}
-			k++;
+			++k;
 		}
-		getline(fin, str);
-		if(k==L){ break; }
+		if (k == L) break;
 	}
-	if(output>0){
+	reader.close();
+	if (output > 0) {
 		fout.close();
 		cout << "Results of the mean coverage per locus are output to '" << outfile << "'." << endl;
 		foutLog << "Results of the mean coverage per locus are output to '" << outfile << "'." << endl;
@@ -2131,86 +2120,6 @@ int check_coverage(int output, int first_ind, int last_ind, uvec cmnS, urowvec &
 	Ncov.clear();
 	C_loc.clear();
 
-	return 1;
-}
-
-//################# Function to check the SEQ_FILE format  ##################
-int check_format_seq(string filename, int inds, int loci){
-	string str;
-	int nrow = 0;
-	int ncol = 0;
-	ifstream fin;
-	fin.open(filename.c_str());
-	if(fin.fail()){
-		cerr << "Error: cannot find the SEQ_FILE '" << filename << "'." << endl;    
-		foutLog << "Error: cannot find the SEQ_FILE '" << filename << "'." << endl;   
-		return 0;
-	}
-	//==========================================================	
-	while(nrow < SEQ_NON_DATA_ROWS){
-		getline(fin, str);     // Read in non-data rows
-		nrow+=1;
-	}
-	while(!fin.eof()){
-		getline(fin, str);
-		if(str.length()>0 && str!=" "){
-			nrow+=1;
-			ncol=0;
-			bool tab=true;   //Previous character is a tab
-			int space=0;    // Number of spaces found after the last tab 
-			for(int i=0; i<str.length(); i++){    
-				if(str[i]!='\t' && i==0){        //Read in the first element
-					ncol+=1;
-					tab=false;
-				}else if(str[i]!='\t' && i>0 && tab){
-					ncol+=1;
-					tab=false;
-					if(ncol>SEQ_NON_DATA_COLS && (str[i]<'0' || str[i]>'9')){
-						cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the SEQ_FILE."<<endl;
-						foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the SEQ_FILE."<<endl;
-						fin.close();
-						return 0;
-					}
-				}else if(str[i]!='\t' && i>0 && !tab){
-					if(ncol>SEQ_NON_DATA_COLS && (str[i]<'0' || str[i]>'9')){
-						if(str[i]==' ' && space<2){
-							space+=1;
-						}else{
-							cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the SEQ_FILE."<<endl;
-							foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the SEQ_FILE."<<endl;
-							fin.close();
-							return 0;
-						}
-					}
-				}else if(str[i]=='\t'){
-					if(ncol>SEQ_NON_DATA_COLS && (space<2 || str[i-1]==' ')){
-						cerr<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the SEQ_FILE."<<endl;
-						foutLog<<"Error: invalid value in (row "<<nrow<<", column "<<ncol<<") in the SEQ_FILE."<<endl;
-						cerr << "Note: the format of SEQ_FILE has been changed in LASER 2.0 to include base quality scores (see manual for details)." << endl;
-						foutLog << "Note: the format of SEQ_FILE has been changed in LASER 2.0 to include base quality scores (see manual for details)." << endl;						
-						fin.close();
-						return 0;
-					}else{
-						tab=true;
-						space=0;
-					}
-				}
-			}
-			if(ncol!=(loci+SEQ_NON_DATA_COLS)){
-				cerr << "Error: incorrect number of loci in row " << nrow << " in the SEQ_FILE." <<endl;
-				foutLog << "Error: incorrect number of loci in row " << nrow << " in the SEQ_FILE." <<endl;
-				fin.close();
-				return 0;
-			}
-		}
-	}
-	if(nrow!=(inds+SEQ_NON_DATA_ROWS)){
-		cerr << "Error: incorrect number of individuals in the SEQ_FILE." << endl;
-		foutLog << "Error: incorrect number of individuals in the SEQ_FILE." << endl;
-		fin.close();
-		return 0;
-	}
-	fin.close();
 	return 1;
 }
 
@@ -3128,38 +3037,6 @@ int check_parameters(){
 	}	
 	//============================================================================
 	return flag;
-}
-//################# Function to calculate input table file dimension  ##################
-bool get_table_dim(int &nrow, int &ncol, string filename, char separator){
-	ifstream fin;
-	string str;
-	nrow = 0;
-	ncol = 0;
-	fin.open(filename.c_str());
-	if(fin.fail()){
-		return false;
-	}
-	while(!fin.eof()){
-		getline(fin, str);
-		if(str.length()>0 && str!=" "){
-			nrow+=1;
-			if(ncol==0){
-				bool is_sep=true;    //Previous character is a separator
-				for(int i=0; i<str.length(); i++){
-					if(str[i]!=separator && i==0){        //Read in the first element
-						ncol+=1;
-						is_sep=false;
-					}else if(str[i]!=separator && i>0 && is_sep){
-						ncol+=1;
-						is_sep=false;
-					}else if(str[i]==separator){
-						is_sep=true;
-					}	
-				}
-			}
-		}
-	}
-	return true;
 }
 //################# Function to perform PCA on genotype matrix (coded as 0, 1, 2, -9)  ##################
 int pca_geno(Mat<char> &G, int nPCs, mat &PC, rowvec &PCvar){
