@@ -19,7 +19,7 @@ Follow these steps to complete installation:
 - Clone repository.
 ```sh
 git clone https://github.com/statgen/LASER
-cd LDServer
+cd LASER
 ```
 
 - Compile and install.
